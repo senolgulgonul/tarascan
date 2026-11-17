@@ -2,14 +2,14 @@
 
 A one-screen page scanner for iPhone that runs in the browser. Point the camera at a page, tap the shutter, repeat, then tap Save to get one PDF. There is no page limit.
 
-**Version:** v3.1
+**Version:** v3.2
 
 ## Use it
 
 1. Open the site in Safari on your iPhone and allow camera access.
 2. Tap the Share button and choose **Add to Home Screen** to get an app icon.
 3. Point the camera at the page. A yellow outline shows the page TaraScan has found.
-4. Tap the round button to take the photo. The page is cropped to the outline, straightened and cleaned up: shadows are removed and the paper comes out white, even when the paper itself is tinted. The last page appears bottom left.
+4. Tap the round button to take the photo. The page is cropped to the outline, straightened and cleaned up: shadows are removed and the paper comes out white, also under warm room light. The last page appears bottom left.
 5. Repeat for every page, then tap **Save (n)**. All pages are saved as one PDF named `Scan_date_time.pdf`, and a new scan starts.
 
 Other controls:
