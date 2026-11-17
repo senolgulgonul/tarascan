@@ -2,7 +2,7 @@
 
 A one-screen page scanner for iPhone that runs in the browser. Point the camera at a page, tap the shutter, repeat, then tap Save to get one PDF. There is no page limit.
 
-**Version:** v3.2
+**Version:** v3.3
 
 ## Use it
 

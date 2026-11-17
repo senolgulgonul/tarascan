@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>TaraScan v3.2</title>
+<title>TaraScan v3.3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
@@ -61,7 +61,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 <body>
 <div class="top">
   <button id="cancel" class="ghost" type="button">Cancel</button>
-  <span class="name">TaraScan v3.2</span>
+  <span class="name">TaraScan v3.3</span>
   <button class="ghost" type="button" aria-hidden="true" tabindex="-1">Cancel</button>
 </div>
 
@@ -88,7 +88,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 <script>
 (() => {
 "use strict";
-const VERSION = "v3.2 · 2026-11-17_18-03";
+const VERSION = "v3.3 · 2026-11-17_18-13";
 const MAX_SRC = 2400;   // stored original long edge
 const MAX_OUT = 1500;   // page long edge in the PDF (about 0.5 MB per page)
 let pages = [];          // {id, order, orig, corners, filter, rot, out, url, busy}
@@ -372,6 +372,12 @@ function refresh(){
   const sv=$("save"); sv.disabled=!n||busy; sv.classList.toggle("none",!n); if(!pendingShare) sv.textContent=`Save (${n})`;
   $("cancel").classList.toggle("ghost",!n);
 }
+// crop about 2 mm inside the detected edges, so no strip of desk is left when the outline is slightly off
+function inset(c){
+  if(c.join()==="0,0,1,0,1,1,0,1") return c;          // whole photo: nothing was detected
+  const cx=(c[0]+c[2]+c[4]+c[6])/4, cy=(c[1]+c[3]+c[5]+c[7])/4, f=.98;
+  return c.map((v,i)=> i%2 ? cy+(v-cy)*f : cx+(v-cx)*f);
+}
 let queue=Promise.resolve();
 function addPhoto(blob){
   const p={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7), order:(pages.length?Math.max(...pages.map(q=>q.order)):0)+1, filter:"doc", rot:0, busy:true};
@@ -380,7 +386,7 @@ function addPhoto(blob){
     try{
       p.orig=await normalizeSource(blob);
       const im=await loadImg(p.orig);
-      p.corners=detectImage(im);
+      p.corners=inset(detectImage(im));
       await render(p); p.busy=false; await dbPut(p);
     }catch(e){ pages=pages.filter(q=>q!==p); hint("That photo couldn’t be read. Take it again.",4000); }
     refresh();
