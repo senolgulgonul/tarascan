@@ -3,299 +3,95 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>TaraScan v2.2</title>
+<title>TaraScan v3.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
+/* A camera screen: dark in both light and dark mode, like the system camera */
 :root{
-  --bg:#EEF0F3; --surface:#FFFFFF; --ink:#1D2129; --muted:#5E6673; --line:#D5D9E0;
-  --accent:#A3215F; --accent-ink:#FFFFFF; --accent-soft:#F6E3EC; --danger:#B42318;
-  --shade:rgba(20,22,28,.55);
-  color-scheme:light;
-  box-sizing:border-box;
-  padding-top:env(safe-area-inset-top,0px);
-  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#000000; --ink:#FFFFFF; --muted:#C9CED6; --accent:#FFD60A; --pill:#FFFFFF; --pill-ink:#000000;
+  color-scheme:dark; box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
 }
-@media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){
-    --bg:#14161A; --surface:#1E2127; --ink:#E9EBEF; --muted:#9AA2AE; --line:#30353D;
-    --accent:#E46BA3; --accent-ink:#1A0B12; --accent-soft:#3A1D2B; --danger:#F47067;
-    --shade:rgba(0,0,0,.7);
-    color-scheme:dark;
-  }
-}
-:root[data-theme="dark"]{
-  --bg:#14161A; --surface:#1E2127; --ink:#E9EBEF; --muted:#9AA2AE; --line:#30353D;
-  --accent:#E46BA3; --accent-ink:#1A0B12; --accent-soft:#3A1D2B; --danger:#F47067;
-  --shade:rgba(0,0,0,.7);
-  color-scheme:dark;
-}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){ --bg:#000000; --ink:#FFFFFF; --muted:#C9CED6; --accent:#FFD60A; --pill:#FFFFFF; --pill-ink:#000000; color-scheme:dark; } }
+:root[data-theme="dark"]{ --bg:#000000; --ink:#FFFFFF; --muted:#C9CED6; --accent:#FFD60A; --pill:#FFFFFF; --pill-ink:#000000; color-scheme:dark; }
 *,*::before,*::after{box-sizing:inherit}
-html{scroll-padding-top:env(safe-area-inset-top,0px)}
-html,body{margin:0}
+html,body{height:100%;margin:0}
 body{
-  background:var(--bg); color:var(--ink);
+  background:var(--bg); color:var(--ink); overflow:hidden; display:flex; flex-direction:column;
   font-family:"Atkinson Hyperlegible",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-  font-size:17px; line-height:1.45; -webkit-tap-highlight-color:transparent;
-  height:100%; display:flex; flex-direction:column; overflow:hidden;
+  font-size:17px; line-height:1.4; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none;
 }
-html{height:100%}
-body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
-button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
-button:focus-visible,input:focus-visible,label:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+button:focus-visible,label:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
 
-header{
-  flex:none;background:var(--bg);width:100%;
-  display:flex;align-items:baseline;justify-content:space-between;gap:12px;
-  padding:12px 20px 8px;max-width:960px;margin:0 auto;
-}
-h1{font-size:1.35rem;margin:0;font-weight:700;letter-spacing:-.01em}
-.count{color:var(--muted);font-size:.95rem;white-space:nowrap}
-.count b{color:var(--ink);font-size:1.35rem}
+.top{flex:none;display:flex;align-items:center;justify-content:space-between;padding:6px 16px;min-height:48px}
+.top button{min-height:44px;font-size:1.05rem}
+.top .name{color:var(--muted);font-size:.8rem}
+.top .ghost{visibility:hidden}
 
-main{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;width:100%;max-width:960px;margin:0 auto;padding:4px 16px 16px}
-
-.empty{
-  margin:2vh auto 0;max-width:30rem;text-align:left;padding:0 6px;
-}
-.empty .sheet{
-  width:72px;aspect-ratio:210/297;border:2px dashed var(--line);border-radius:6px;
-  position:relative;margin-bottom:16px;background:var(--surface);
-}
-.empty .sheet::before,.empty .sheet::after{content:"";position:absolute;width:18px;height:18px;border:3px solid var(--accent)}
-.empty .sheet::before{top:-6px;left:-6px;border-right:0;border-bottom:0}
-.empty .sheet::after{bottom:-6px;right:-6px;border-left:0;border-top:0}
-.empty h2{font-size:1.15rem;margin:0 0 6px}
-.empty p{margin:0 0 10px;color:var(--muted)}
-
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:14px}
-.thumb{position:relative;display:block;width:100%;padding:0;text-align:left}
-.thumb .img{
-  width:100%;aspect-ratio:210/297;background:var(--surface);border:1px solid var(--line);
-  border-radius:4px;overflow:hidden;display:flex;align-items:center;justify-content:center;
-}
-.thumb img{max-width:100%;max-height:100%;display:block}
-.thumb .num{display:block;margin-top:4px;font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
-.thumb.busy .img::after{content:"Processing…";position:absolute;inset:0 0 22px;display:flex;align-items:center;justify-content:center;font-size:.8rem;color:var(--muted);background:var(--surface)}
-
-.bar{
-  flex:none;z-index:6;
-  padding:10px 16px 10px;
-  background:var(--surface);border-top:1px solid var(--line);
-}
-.bar-in{max-width:960px;margin:0 auto;display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:8px;align-items:center}
-.btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  min-height:52px;padding:0 10px;border-radius:12px;font-weight:700;font-size:1rem;white-space:nowrap;
-  border:1px solid var(--line);background:var(--surface);
-}
-.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
-.btn.camera{background:var(--ink);color:var(--bg);border-color:var(--ink);font-size:1.05rem}
-.btn[disabled]{opacity:.45;cursor:default}
-.btn svg{width:22px;height:22px;flex:none}
+.view{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.view video{max-width:100%;max-height:100%;display:block}
+.view canvas{position:absolute;pointer-events:none}
+.flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+@media (prefers-reduced-motion:no-preference){ .flash{transition:opacity .25s} }
+.hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);max-width:calc(100% - 32px);text-align:center;
+  background:rgba(0,0,0,.55);padding:8px 16px;border-radius:10px;font-size:1rem}
+.hint:empty{display:none}
+.start{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:28px;text-align:center;background:var(--bg)}
+.start[hidden]{display:none}
+.start h1{font-size:1.6rem;margin:0}
+.start p{margin:0;color:var(--muted);max-width:24rem}
+.big{display:inline-flex;align-items:center;justify-content:center;min-height:54px;padding:0 26px;border-radius:999px;background:var(--pill);color:var(--pill-ink);font-weight:700}
 input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 
-.toast{
-  position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
-  background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:.95rem;
-  z-index:30;max-width:calc(100% - 32px);display:none;
-}
-.toast.show{display:block}
-
-/* Live camera */
-.cam{position:fixed;inset:0;z-index:22;background:#000;color:#fff;display:none;flex-direction:column;
-  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-.cam.open{display:flex}
-.cam-top{display:flex;justify-content:space-between;align-items:center;padding:8px 14px}
-.cam-top button{min-height:44px;padding:0 6px;color:#fff;font-weight:700}
-#cropTgl{font-weight:400;font-size:.9rem;border:1px solid #555;border-radius:999px;padding:0 14px;min-height:36px}
-#cropTgl[aria-pressed="true"]{border-color:#E46BA3;color:#F3B6D1}
-.cam-top span{color:#C9CED6;font-size:.95rem;font-variant-numeric:tabular-nums}
-.cam-view{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
-.cam-view video{max-width:100%;max-height:100%;display:block}
-.cam-view canvas{position:absolute;pointer-events:none}
-.cam-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
-@media (prefers-reduced-motion:no-preference){.cam-flash{transition:opacity .25s}}
-.cam-msg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center}
-.cam-msg[hidden]{display:none}
-.cam-bottom{padding:8px 16px 14px}
-.cam-hint{text-align:center;font-size:.95rem;min-height:1.6em;margin-bottom:8px;color:#C9CED6}
-.cam-hint.ok{color:#fff}
-.cam-hint.warn{color:#FFC46B}
-.cam-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;justify-items:center}
-.cam-last{width:44px;height:58px;border-radius:4px;background:#222 center/cover no-repeat;border:1px solid #444;justify-self:start}
-.shutter{width:74px;height:74px;border-radius:50%;background:#fff;border:5px solid #000;box-shadow:0 0 0 3px #fff}
+.bottom{flex:none;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:14px 18px 16px}
+.last{justify-self:start;width:52px;height:68px;border-radius:5px;background:#1b1b1b center/cover no-repeat;border:1px solid #444;padding:0}
+.last[disabled]{opacity:0}
+.shutter{width:76px;height:76px;border-radius:50%;background:#fff;border:5px solid #000;box-shadow:0 0 0 3px #fff}
 .shutter:active{transform:scale(.94)}
-.shutter[disabled]{opacity:.4}
-
-/* Editor */
-.editor{
-  position:fixed;inset:0;z-index:20;background:#0E0F12;color:#EEF0F3;display:none;flex-direction:column;
-  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
-}
-.editor.open{display:flex}
-.ed-top{display:flex;align-items:center;justify-content:space-between;padding:10px 12px}
-.ed-top .t{font-weight:700}
-.ed-top button{min-height:44px;padding:0 12px;border-radius:10px;color:#EEF0F3}
-.ed-top .save{background:#E46BA3;color:#1A0B12;font-weight:700}
-.stage{flex:1;position:relative;overflow:hidden;touch-action:none;display:flex;align-items:center;justify-content:center}
-.stage-in{position:relative}
-.stage img{display:block;max-width:100%;max-height:100%;user-select:none;-webkit-user-select:none;pointer-events:none}
-.stage svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
-.handle{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;touch-action:none;display:flex;align-items:center;justify-content:center}
-.handle::after{content:"";width:20px;height:20px;border-radius:50%;background:#E46BA3;border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
-.ed-tools{padding:10px 12px 12px;display:flex;flex-direction:column;gap:10px}
-.seg{display:grid;grid-template-columns:repeat(4,1fr);background:#23262D;border-radius:10px;padding:3px;gap:3px}
-.seg button{min-height:40px;border-radius:8px;color:#C9CED6;font-size:.9rem}
-.seg button[aria-pressed="true"]{background:#EEF0F3;color:#0E0F12;font-weight:700}
-.row{display:flex;gap:8px;flex-wrap:wrap}
-.row button{flex:1 1 auto;min-height:44px;border-radius:10px;background:#23262D;color:#EEF0F3;padding:0 10px;font-size:.92rem}
-.row .del{color:#F47067}
-.ed-busy{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(14,15,18,.7);font-weight:700}
-.ed-busy.on{display:flex}
-
-/* PDF sheet */
-.dialog{position:fixed;inset:0;z-index:25;background:var(--shade);display:none;align-items:flex-end;justify-content:center}
-.dialog.open{display:flex}
-.panel{
-  background:var(--surface);width:100%;max-width:520px;border-radius:16px 16px 0 0;
-  padding:20px 20px calc(20px + env(safe-area-inset-bottom,0px));
-}
-.panel h2{margin:0 0 4px;font-size:1.2rem}
-.panel p{margin:0 0 14px;color:var(--muted);font-size:.95rem}
-.field{display:block;margin-bottom:14px}
-.field span{display:block;font-size:.9rem;color:var(--muted);margin-bottom:4px}
-.field input{width:100%;min-height:48px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font:inherit;background:var(--bg);color:var(--ink)}
-.check{display:flex;gap:10px;align-items:flex-start;margin-bottom:18px;font-size:.95rem}
-.check input{width:22px;height:22px;margin:1px 0 0;accent-color:var(--accent);flex:none}
-.panel .actions{display:grid;grid-template-columns:1fr 1.4fr;gap:10px}
-.panel .link{color:var(--danger);font-size:.92rem;margin-top:14px;min-height:40px}
-.progress{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:4px 0 14px;display:none}
-.progress.on{display:block}
-.progress i{display:block;height:100%;width:0;background:var(--accent)}
-@media (prefers-reduced-motion:no-preference){.progress i{transition:width .2s}}
+.shutter[disabled]{opacity:.35}
+.save{justify-self:end;min-height:44px;padding:0 18px;border-radius:999px;background:var(--pill);color:var(--pill-ink);font-weight:700;white-space:nowrap}
+.save[disabled]{opacity:.45}
+.save.none{visibility:hidden}
 </style>
 </head>
 <body>
-<header>
-  <h1>TaraScan <span style="font-weight:400;color:var(--muted);font-size:.8em">v2.2</span></h1>
-  <div class="count" id="count"><b>0</b> pages</div>
-</header>
-
-<main>
-  <section class="empty" id="empty">
-    <div class="sheet" aria-hidden="true"></div>
-    <h2>Place the page on a dark surface and shoot from straight above.</h2>
-    <p>Fit the page inside the frame on screen and tap the round button for each page; there’s no page limit. The page is cropped and shadows are cleaned up automatically.</p>
-    <p>When you’re done, “Make PDF” saves every page in one file.</p>
-  </section>
-  <div class="grid" id="grid" aria-label="Scanned pages"></div>
-</main>
-
-<div class="bar">
-  <div class="bar-in">
-    <button class="btn camera" id="camBtn" type="button">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
-      Take photo
-    </button>
-    <label class="btn" for="libIn" title="Add from photos">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>
-      Photos
-    </label>
-    <button class="btn primary" id="pdfBtn" disabled>Make PDF</button>
-  </div>
-  <input type="file" id="camIn" accept="image/*" capture="environment">
-  <input type="file" id="libIn" accept="image/*" multiple>
+<div class="top">
+  <button id="cancel" class="ghost" type="button">Cancel</button>
+  <span class="name">TaraScan v3.0</span>
+  <button class="ghost" type="button" aria-hidden="true" tabindex="-1">Cancel</button>
 </div>
 
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
-
-<!-- Live camera -->
-<div class="cam" id="cam" role="dialog" aria-modal="true" aria-label="Camera">
-  <div class="cam-top">
-    <button id="camDone" type="button">Done</button>
-    <button id="cropTgl" type="button" aria-pressed="true">Auto crop: On</button>
-    <span id="camCount">0 pages</span>
-  </div>
-  <div class="cam-view" id="camView">
-    <video id="camVideo" playsinline muted autoplay></video>
-    <canvas id="camOverlay" aria-hidden="true"></canvas>
-    <div class="cam-flash" id="camFlash"></div>
-    <div class="cam-msg" id="camMsg" hidden>
-      <p id="camMsgText">The camera couldn’t be opened here.</p>
-      <label class="btn camera" for="camIn">Use the iPhone camera instead</label>
-    </div>
-  </div>
-  <div class="cam-bottom">
-    <div class="cam-hint" id="camHint">Looking for the sheet…</div>
-    <div class="cam-row">
-      <div class="cam-last" id="camLast" aria-hidden="true"></div>
-      <button class="shutter" id="shutter" type="button" aria-label="Take photo" disabled></button>
-      <div class="cam-last" aria-hidden="true" style="visibility:hidden"></div>
-    </div>
+<div class="view" id="view">
+  <video id="video" playsinline muted autoplay></video>
+  <canvas id="overlay" aria-hidden="true"></canvas>
+  <div class="flash" id="flash"></div>
+  <div class="hint" id="hint" role="status" aria-live="polite"></div>
+  <div class="start" id="start">
+    <h1>TaraScan</h1>
+    <p id="startText">Scan paper pages into one PDF. The page is found, cropped and cleaned up for you.</p>
+    <button class="big" id="startBtn" type="button">Open camera</button>
+    <label class="big" id="fileLbl" for="fileIn" hidden>Take photos with the iPhone camera</label>
+    <input type="file" id="fileIn" accept="image/*" multiple>
   </div>
 </div>
 
-<!-- Editor -->
-<div class="editor" id="editor" role="dialog" aria-modal="true" aria-label="Edit page">
-  <div class="ed-top">
-    <button id="edCancel">Cancel</button>
-    <span class="t" id="edTitle">Page 1</span>
-    <button class="save" id="edSave">Save</button>
-  </div>
-  <div class="stage" id="stage">
-    <div class="stage-in" id="stageIn">
-      <img id="edImg" alt="">
-      <svg id="edSvg" aria-hidden="true"><polygon id="edPoly" fill="rgba(228,107,163,.18)" stroke="#E46BA3" stroke-width="2"/></svg>
-    </div>
-    <div class="ed-busy" id="edBusy">Processing…</div>
-  </div>
-  <div class="ed-tools">
-    <div class="seg" role="group" aria-label="Look">
-      <button data-f="doc">Document</button>
-      <button data-f="gray">Gray</button>
-      <button data-f="bw">B&amp;W</button>
-      <button data-f="none">Original</button>
-    </div>
-    <div class="row">
-      <button id="edRot">Rotate</button>
-      <button id="edFull">Whole photo</button>
-      <button id="edAuto">Find edges</button>
-    </div>
-    <div class="row">
-      <button id="edUp">Move earlier</button>
-      <button id="edDown">Move later</button>
-      <button id="edDel" class="del">Delete page</button>
-    </div>
-  </div>
-</div>
-
-<!-- PDF dialog -->
-<div class="dialog" id="pdfDlg" role="dialog" aria-modal="true" aria-labelledby="pdfTitle">
-  <div class="panel">
-    <h2 id="pdfTitle">Save PDF</h2>
-    <p id="pdfInfo"></p>
-    <label class="field"><span>File name (date and time are added automatically)</span><input id="pdfName" autocomplete="off"></label>
-    <p id="pdfStamp" style="margin-top:-8px"></p>
-    <label class="check"><input type="checkbox" id="pdfHigh"><span>High resolution (about 3× larger file; only needed for fine print)</span></label>
-    <div class="progress" id="pdfProg"><i></i></div>
-    <div class="actions">
-      <button class="btn" id="pdfCancel">Cancel</button>
-      <button class="btn primary" id="pdfGo">Save</button>
-    </div>
-    <button class="link" id="clearAll">Delete all pages</button>
-    <p style="margin:10px 0 0;font-size:.8rem">Version v2.2 · 2026-11-17_16-40</p>
-  </div>
+<div class="bottom">
+  <button class="last" id="last" type="button" aria-label="Remove the last page" disabled></button>
+  <button class="shutter" id="shutter" type="button" aria-label="Take photo" disabled></button>
+  <button class="save none" id="save" type="button" disabled>Save</button>
 </div>
 
 <script>
 (() => {
 "use strict";
+const VERSION = "v3.0 · 2026-11-17_17-39";
 const MAX_SRC = 2400;   // stored original long edge
-const MAX_OUT = 2200;   // processed page long edge
-let pages = [];          // {id, order, orig:Blob, corners:[x0,y0..] normalized, filter, rot, out:Blob, url}
+const MAX_OUT = 1500;   // page long edge in the PDF (about 0.5 MB per page)
+let pages = [];          // {id, order, orig, corners, filter, rot, out, url, busy}
 let dlNS;                // downloads namespace (lazy)
 const $ = id => document.getElementById(id);
 
@@ -351,12 +147,12 @@ async function normalizeSource(file){
 // 1) learn the paper colour from the middle of the photo and the surface colours from its border,
 // 2) keep the paper-coloured region around the centre, 3) fit four straight sides to its outline,
 // 4) pull each side in to the top sheet when the sheet lies on a stack.
-function detectImage(im){ return detectCorners(im, im.naturalWidth, im.naturalHeight).pts; }
+function detectImage(im){ return detectCorners(im, im.naturalWidth, im.naturalHeight, false).pts; }
 function shoelace(p){ let a=0; for(let i=0;i<4;i++){ const j=(i+1)%4; a+=p[i][0]*p[j][1]-p[j][0]*p[i][1]; } return a/2; }
-function detectCorners(im, SW, SH){
+function detectCorners(im, SW, SH, fast){
   const FULL={pts:[0,0,1,0,1,1,0,1], ok:false, borders:0};
   try{
-    const s2=800/Math.max(SW,SH);
+    const s2=(fast?400:800)/Math.max(SW,SH);
     const w=Math.max(24,Math.round(SW*s2/2)), h=Math.max(24,Math.round(SH*s2/2)), W2=w*2, H2=h*2, n=w*h;
     const c=canvas(W2,H2), x=c.getContext("2d",{willReadFrequently:true}); x.imageSmoothingQuality="high"; x.drawImage(im,0,0,W2,H2);
     const d=x.getImageData(0,0,W2,H2).data;
@@ -448,6 +244,7 @@ function detectCorners(im, SW, SH){
     const cross=(A,Bq)=>{ const a1=cs[A.t],b1=sn[A.t],a2=cs[Bq.t],b2=sn[Bq.t], det=a1*b2-a2*b1; if(Math.abs(det)<1e-6) return null;
       return [(A.r*b2-Bq.r*b1)/det*2,(a1*Bq.r-a2*A.r)/det*2]; };          // x2: coordinates in the 800px image
     const P=[cross(T,Lf),cross(T,Rt),cross(Bm,Rt),cross(Bm,Lf)]; if(P.some(p=>!p)) return FULL;
+    if(fast) return {pts:P.flatMap(p=>[Math.min(1,Math.max(0,p[0]/W2)), Math.min(1,Math.max(0,p[1]/H2))]), ok:true, borders:0};
     // refine on the 800px grey image: slide each side inwards past the stack edges to the blank margin
     const N2=W2*H2; let gr=new Float32Array(N2); for(let i=0;i<N2;i++) gr[i]=d[i*4]*.299+d[i*4+1]*.587+d[i*4+2]*.114;
     gr=box(gr,W2,H2,1);
@@ -552,275 +349,144 @@ async function render(p){
   if(p.url) URL.revokeObjectURL(p.url); p.url = URL.createObjectURL(p.out);
 }
 
-/* ---------- list UI ---------- */
-function draw(){
+
+/* ---------- pages ---------- */
+let hintT;
+function hint(text, hold){ $("hint").textContent=text; clearTimeout(hintT); if(hold) hintT=setTimeout(()=>{ if($("hint").textContent===text) $("hint").textContent=""; },hold); }
+function refresh(){
   pages.sort((a,b)=>a.order-b.order);
-  const g=$("grid"); g.textContent="";
-  pages.forEach((p,i)=>{
-    const b=document.createElement("button"); b.className="thumb"+(p.busy?" busy":""); b.type="button";
-    b.setAttribute("aria-label",`Page ${i+1}, tap to edit`);
-    const box=document.createElement("span"); box.className="img";
-    if(p.url){ const im=document.createElement("img"); im.src=p.url; im.alt=""; box.appendChild(im); }
-    const n=document.createElement("span"); n.className="num"; n.textContent=`Page ${i+1}`;
-    b.append(box,n); b.onclick=()=>{ if(!p.busy) openEditor(p); }; g.appendChild(b);
-  });
-  $("count").innerHTML=`<b>${pages.length}</b> ${pages.length===1?"page":"pages"}`;
-  $("empty").style.display = pages.length ? "none" : "";
-  $("pdfBtn").disabled = !pages.length || pages.some(p=>p.busy);
+  const n=pages.length, busy=pages.some(p=>p.busy), lastDone=[...pages].reverse().find(p=>p.url);
+  $("last").disabled=!n; $("last").style.backgroundImage= lastDone ? `url(${lastDone.url})` : "";
+  const sv=$("save"); sv.disabled=!n||busy; sv.classList.toggle("none",!n); if(!pendingShare) sv.textContent=`Save (${n})`;
+  $("cancel").classList.toggle("ghost",!n);
 }
-let toastT;
-function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),3200); }
-
-let queue = Promise.resolve();
-function addFiles(files){
-  [...files].forEach(f=>{
-    const p={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7), order:(pages.length?Math.max(...pages.map(q=>q.order)):0)+1, filter:"doc", rot:0, busy:true};
-    pages.push(p); draw();
-    queue = queue.then(async()=>{
-      try{
-        p.orig = await normalizeSource(f);
-        const im = await loadImg(p.orig);
-        p.corners = autoCrop ? detectImage(im) : [0,0,1,0,1,1,0,1];
-        await render(p); p.busy=false; await dbPut(p);
-      }catch(e){ pages=pages.filter(q=>q!==p); toast("A photo couldn’t be read. Try taking it again."); }
-      draw();
-    });
-  });
-}
-$("camIn").onchange=e=>{ if(e.target.files.length) addFiles(e.target.files); e.target.value=""; if(typeof closeCamera==="function" && $("cam").classList.contains("open")) closeCamera(); };
-$("libIn").onchange=e=>{ if(e.target.files.length) addFiles(e.target.files); e.target.value=""; };
-
-/* ---------- editor ---------- */
-let ed=null; // {p, corners, filter, rot}
-function openEditor(p){
-  ed={p, corners:p.corners.slice(), filter:p.filter, rot:p.rot};
-  $("edTitle").textContent=`Page ${pages.indexOf(p)+1} of ${pages.length}`;
-  const u=URL.createObjectURL(p.orig), img=$("edImg");
-  img.onload=()=>{ fitStage(); URL.revokeObjectURL(u); };
-  img.src=u; setSeg(); $("editor").classList.add("open"); document.body.style.overflow="hidden";
-}
-function closeEditor(){ $("editor").classList.remove("open"); document.body.style.overflow=""; ed=null; document.querySelectorAll(".handle").forEach(h=>h.remove()); }
-function setSeg(){ document.querySelectorAll(".seg button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.f===ed.filter))); }
-function fitStage(){
-  const st=$("stage"), img=$("edImg"); if(!img.naturalWidth) return;
-  const pad=24, s=Math.min((st.clientWidth-pad*2)/img.naturalWidth,(st.clientHeight-pad*2)/img.naturalHeight);
-  img.style.width=img.naturalWidth*s+"px"; img.style.height=img.naturalHeight*s+"px";
-  placeHandles();
-}
-function placeHandles(){
-  const si=$("stageIn"), img=$("edImg"), W=img.clientWidth, H=img.clientHeight;
-  let hs=[...si.querySelectorAll(".handle")];
-  if(hs.length!==4){ hs.forEach(h=>h.remove()); hs=[0,1,2,3].map(i=>{ const h=document.createElement("div"); h.className="handle"; h.dataset.i=i; si.appendChild(h); bindDrag(h); return h; }); }
-  hs.forEach((h,i)=>{ h.style.left=ed.corners[i*2]*W+"px"; h.style.top=ed.corners[i*2+1]*H+"px"; });
-  $("edSvg").setAttribute("viewBox",`0 0 ${W} ${H}`);
-  $("edPoly").setAttribute("points",[0,1,2,3].map(i=>`${ed.corners[i*2]*W},${ed.corners[i*2+1]*H}`).join(" "));
-}
-function bindDrag(h){
-  h.addEventListener("pointerdown",e=>{
-    e.preventDefault(); h.setPointerCapture(e.pointerId);
-    const i=+h.dataset.i, img=$("edImg");
-    const move=ev=>{ const r=img.getBoundingClientRect();
-      ed.corners[i*2]=Math.min(1,Math.max(0,(ev.clientX-r.left)/r.width));
-      ed.corners[i*2+1]=Math.min(1,Math.max(0,(ev.clientY-r.top)/r.height)); placeHandles(); };
-    const up=()=>{ h.removeEventListener("pointermove",move); h.removeEventListener("pointerup",up); h.removeEventListener("pointercancel",up); };
-    h.addEventListener("pointermove",move); h.addEventListener("pointerup",up); h.addEventListener("pointercancel",up);
-  });
-}
-window.addEventListener("resize",()=>{ if(ed) fitStage(); });
-document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{ ed.filter=b.dataset.f; setSeg(); });
-$("edRot").onclick=()=>{ ed.rot=(ed.rot+1)%4; toast(`Will be rotated ${ed.rot*90}° when you save.`); };
-$("edFull").onclick=()=>{ ed.corners=[0,0,1,0,1,1,0,1]; placeHandles(); };
-$("edAuto").onclick=async()=>{ const im=await loadImg(ed.p.orig); ed.corners=detectImage(im); placeHandles(); };
-$("edCancel").onclick=closeEditor;
-$("edSave").onclick=async()=>{
-  const p=ed.p; $("edBusy").classList.add("on");
-  try{ p.corners=ed.corners; p.filter=ed.filter; p.rot=ed.rot; await render(p); await dbPut(p); }
-  catch(e){ toast("The page couldn’t be processed."); }
-  $("edBusy").classList.remove("on"); closeEditor(); draw();
-};
-function swap(dir){
-  const p=ed.p, i=pages.indexOf(p), j=i+dir; if(j<0||j>=pages.length) return;
-  const o=pages[j].order; pages[j].order=p.order; p.order=o; dbPut(pages[j]); dbPut(p); draw();
-  $("edTitle").textContent=`Page ${pages.indexOf(p)+1} of ${pages.length}`;
-}
-$("edUp").onclick=()=>swap(-1);
-$("edDown").onclick=()=>swap(1);
-$("edDel").onclick=()=>{
-  if(!confirm("Delete this page?")) return;
-  const p=ed.p; pages=pages.filter(q=>q!==p); if(p.url) URL.revokeObjectURL(p.url); dbDel(p.id); closeEditor(); draw();
-};
-
-/* ---------- PDF ---------- */
-function fileName(){
-  let base=($("pdfName").value.trim()||"Scan").replace(/\.pdf$/i,"").replace(/[\\/:*?"<>|]+/g,"-");
-  return `${base}_${stamp()}.pdf`;
-}
-function stamp(){ const d=new Date(), z=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}_${z(d.getHours())}-${z(d.getMinutes())}-${z(d.getSeconds())}`; }
-$("pdfBtn").onclick=()=>{
-  try{ $("pdfName").value=localStorage.getItem("pdfPrefix")||"Scan"; }catch(e){ $("pdfName").value="Scan"; }
-  $("pdfStamp").textContent=`Saves as: ${fileName()}`;
-  $("pdfInfo").textContent=`${pages.length} ${pages.length===1?"page":"pages"} will be combined into one PDF.`;
-  $("pdfProg").classList.remove("on"); $("pdfGo").disabled=false; pendingShare=null; $("pdfGo").textContent="Save";
-  $("pdfDlg").classList.add("open");
-};
-$("pdfCancel").onclick=()=>$("pdfDlg").classList.remove("open");
-$("pdfName").addEventListener("input",()=>{ $("pdfStamp").textContent=`Saves as: ${fileName()}`; });
-$("pdfDlg").addEventListener("click",e=>{ if(e.target.id==="pdfDlg") $("pdfDlg").classList.remove("open"); });
-function blobToDataURL(b){ return new Promise(r=>{ const f=new FileReader(); f.onload=()=>r(f.result); f.readAsDataURL(b); }); }
-async function shrink(blob, max){
-  const im=await loadImg(blob), s=Math.min(1,max/Math.max(im.naturalWidth,im.naturalHeight));
-  const c=canvas(Math.round(im.naturalWidth*s),Math.round(im.naturalHeight*s)); c.getContext("2d").drawImage(im,0,0,c.width,c.height);
-  return toBlob(c,.72);
-}
-let pendingShare=null;
-async function shareFile(file,name){
-  try{
-    await navigator.share({files:[file],title:name});
-    pendingShare=null; $("pdfGo").textContent="Save";
-    $("pdfDlg").classList.remove("open");
-    toast(`${name} ready (${(file.size/1048576).toFixed(1)} MB). File name copied: paste it as the email subject.`);
-  }catch(err){
-    if(err&&err.name==="AbortError"){ toast("Save cancelled."); return; }
-    if(err&&err.name==="NotAllowedError"){
-      // the tap expired while the PDF was being built: ask for one more tap
-      pendingShare={file,name}; $("pdfGo").textContent="Share PDF"; $("pdfGo").disabled=false;
-      toast("PDF is ready. Tap “Share PDF” to send or save it."); return;
-    }
-    toast("The file couldn’t be saved.");
-  }
-}
-$("pdfGo").onclick=async()=>{
-  if(pendingShare){
-    try{ navigator.clipboard && navigator.clipboard.writeText(pendingShare.name.replace(/\.pdf$/i,"")); }catch(e){}
-    shareFile(pendingShare.file,pendingShare.name); return;
-  }
-  if(!window.jspdf){ toast("The PDF tool didn’t load. Check your connection and reload the page."); return; }
-  const name=fileName();
-  // copy the file name now, while the tap still counts, so it can be pasted as the email subject
-  try{ navigator.clipboard && navigator.clipboard.writeText(name.replace(/\.pdf$/i,"")).catch(()=>{}); }catch(e){}
-  const go=$("pdfGo"); go.disabled=true;
-  const prog=$("pdfProg"), bar=prog.querySelector("i"); prog.classList.add("on"); bar.style.width="0";
-  try{
-    const small=!$("pdfHigh").checked; let doc=null;
-    for(let i=0;i<pages.length;i++){
-      const p=pages[i], land=p.ow>p.oh, pw=land?297:210, ph=land?210:297;
-      const blob= small ? await shrink(p.out,1400) : p.out;
-      const url=await blobToDataURL(blob);
-      if(!doc) doc=new window.jspdf.jsPDF({unit:"mm",format:"a4",orientation:land?"l":"p",compress:true});
-      else doc.addPage("a4",land?"l":"p");
-      const s=Math.min(pw/p.ow,ph/p.oh), w=p.ow*s, h=p.oh*s;
-      doc.addImage(url,"JPEG",(pw-w)/2,(ph-h)/2,w,h,undefined,"FAST");
-      bar.style.width=Math.round((i+1)/pages.length*90)+"%";
-      await new Promise(r=>setTimeout(r,0));
-    }
-    doc.setProperties({title:name.replace(/\.pdf$/i,""),creator:"TaraScan"});
-    const out=doc.output("blob"); bar.style.width="100%";
-    try{ localStorage.setItem("pdfPrefix",$("pdfName").value.trim()||"Scan"); }catch(e){}
-    if(dlNS===undefined) dlNS = window.claude && window.claude.use ? await window.claude.use("downloads") : null;
-    if(!dlNS){
-      // Outside Claude: share sheet (iPhone), otherwise a normal download
-      const file=new File([out],name,{type:"application/pdf"});
-      if(navigator.canShare && navigator.canShare({files:[file]})){ go.disabled=false; await shareFile(file,name); return; }
-      const a=document.createElement("a"); a.href=URL.createObjectURL(out); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},4000);
-      $("pdfDlg").classList.remove("open"); toast(`${name} downloaded (${(out.size/1048576).toFixed(1)} MB).`);
-      go.disabled=false; return;
-    }
+let queue=Promise.resolve();
+function addPhoto(blob){
+  const p={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7), order:(pages.length?Math.max(...pages.map(q=>q.order)):0)+1, filter:"doc", rot:0, busy:true};
+  pages.push(p); pendingShare=null; refresh();
+  queue=queue.then(async()=>{
     try{
-      await dlNS.save({filename:name, data:out});
-      $("pdfDlg").classList.remove("open");
-      toast(`${name} saved (${(out.size/1048576).toFixed(1)} MB). File name copied: paste it as the email subject.`);
-    }catch(err){
-      const c=err&&err.code;
-      if(c==="declined") toast("Save cancelled.");
-      else if(c==="rate_limited") toast("A save prompt is already open. Try again in a few seconds.");
-      else toast("The file couldn’t be saved.");
-    }
-  }catch(e){ toast("The PDF couldn’t be created."); }
-  go.disabled=false;
-};
-$("clearAll").onclick=async()=>{
-  if(!confirm(`Delete all ${pages.length} pages?`)) return;
+      p.orig=await normalizeSource(blob);
+      const im=await loadImg(p.orig);
+      p.corners=detectImage(im);
+      await render(p); p.busy=false; await dbPut(p);
+    }catch(e){ pages=pages.filter(q=>q!==p); hint("That photo couldn’t be read. Take it again.",4000); }
+    refresh();
+  });
+}
+async function clearPages(){
   for(const p of pages){ if(p.url) URL.revokeObjectURL(p.url); await dbDel(p.id); }
-  pages=[]; $("pdfDlg").classList.remove("open"); draw();
-};
+  pages=[]; pendingShare=null; refresh();
+}
+$("cancel").onclick=async()=>{ if(!pages.length) return;
+  if(confirm(`Discard ${pages.length} scanned ${pages.length===1?"page":"pages"}?`)){ await clearPages(); hint("Scan discarded.",2500); } };
+$("last").onclick=async()=>{ const p=pages[pages.length-1]; if(!p||p.busy) return;
+  if(confirm("Remove the last page?")){ pages.pop(); if(p.url) URL.revokeObjectURL(p.url); await dbDel(p.id); pendingShare=null; refresh(); } };
 
-/* ---------- live camera ---------- */
-const cam={stream:null, timer:0, smooth:null, lost:0, count:0};
-function camHint(text,cls){ const h=$("camHint"); h.textContent=text; h.className="cam-hint"+(cls?" "+cls:""); }
-async function openCamera(){
-  $("cam").classList.add("open"); document.body.style.overflow="hidden";
-  cam.count=0; $("camCount").textContent="0 pages"; $("camLast").style.backgroundImage="";
-  $("camMsg").hidden=true; $("shutter").disabled=true; camHint("Opening the camera…");
-  if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)){ camFail(); return; }
-  try{
-    cam.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:2560},height:{ideal:1920}}});
-    const v=$("camVideo"); v.srcObject=cam.stream; await v.play();
-    $("shutter").disabled=false; camHint("Fit the whole page inside the frame, then tap the button.","ok"); cam.smooth=null; cam.lost=0;
-    loop();
-  }catch(e){ camFail(); }
-}
-function camFail(){
-  $("camMsg").hidden=false; camHint("");
-  $("camMsgText").textContent="The camera couldn’t be opened here. Allow camera access in Safari, or use the iPhone camera instead.";
-}
-function closeCamera(){
-  clearTimeout(cam.timer); cam.timer=0;
-  if(cam.stream){ cam.stream.getTracks().forEach(t=>t.stop()); cam.stream=null; }
-  $("camVideo").srcObject=null; $("cam").classList.remove("open"); document.body.style.overflow="";
-}
+/* ---------- camera with live page outline ---------- */
+const cam={stream:null, timer:0, smooth:null, lost:0};
 function overlayBox(){
-  const v=$("camVideo"), o=$("camOverlay"), r=v.getBoundingClientRect(), pr=v.parentElement.getBoundingClientRect();
+  const v=$("video"), o=$("overlay"), r=v.getBoundingClientRect(), pr=$("view").getBoundingClientRect();
   o.style.left=(r.left-pr.left)+"px"; o.style.top=(r.top-pr.top)+"px"; o.style.width=r.width+"px"; o.style.height=r.height+"px";
-  const dpr=window.devicePixelRatio||1; if(o.width!==Math.round(r.width*dpr)){ o.width=Math.round(r.width*dpr); o.height=Math.round(r.height*dpr); }
+  const dpr=window.devicePixelRatio||1; if(o.width!==Math.round(r.width*dpr)||o.height!==Math.round(r.height*dpr)){ o.width=Math.round(r.width*dpr); o.height=Math.round(r.height*dpr); }
   return {o,W:o.width,H:o.height,dpr};
 }
 function drawQuad(pts){
   const {o,W,H,dpr}=overlayBox(), x=o.getContext("2d"); x.clearRect(0,0,W,H); if(!pts) return;
   x.beginPath(); for(let i=0;i<4;i++){ const px=pts[i*2]*W, py=pts[i*2+1]*H; i?x.lineTo(px,py):x.moveTo(px,py); } x.closePath();
-  x.fillStyle="rgba(228,107,163,.22)"; x.fill(); x.lineWidth=3*dpr; x.strokeStyle="#E46BA3"; x.stroke();
-  x.fillStyle="#fff"; for(let i=0;i<4;i++){ x.beginPath(); x.arc(pts[i*2]*W,pts[i*2+1]*H,5*dpr,0,7); x.fill(); }
-}
-// Static A4 guide: no edge detection, just a frame to fit the page into
-function drawGuide(){
-  const v=$("camVideo"); if(!v.videoWidth) return;
-  const {o,W,H,dpr}=overlayBox(), x=o.getContext("2d"); x.clearRect(0,0,W,H);
-  const a4=210/297, va=W/H, f=.92;
-  let gw,gh; if(va>a4){ gh=H*f; gw=gh*a4; } else { gw=W*f; gh=gw/a4; }
-  const x0=(W-gw)/2, y0=(H-gh)/2, L=Math.min(gw,gh)*.12;
-  x.strokeStyle="rgba(255,255,255,.55)"; x.lineWidth=1.5*dpr; x.setLineDash([8*dpr,8*dpr]); x.strokeRect(x0,y0,gw,gh); x.setLineDash([]);
-  x.strokeStyle="#E46BA3"; x.lineWidth=4*dpr; x.lineCap="round";
-  [[x0,y0,1,1],[x0+gw,y0,-1,1],[x0+gw,y0+gh,-1,-1],[x0,y0+gh,1,-1]].forEach(([cx,cy,sx,sy])=>{
-    x.beginPath(); x.moveTo(cx,cy+sy*L); x.lineTo(cx,cy); x.lineTo(cx+sx*L,cy); x.stroke(); });
+  x.fillStyle="rgba(255,214,10,.16)"; x.fill(); x.lineWidth=2.5*dpr; x.lineJoin="round"; x.strokeStyle="#FFD60A"; x.stroke();
 }
 function loop(){
   if(!cam.stream) return;
-  drawGuide();
-  cam.timer=setTimeout(loop,500);
+  const v=$("video");
+  if(v.videoWidth && !document.hidden){
+    const r=detectCorners(v, v.videoWidth, v.videoHeight, true);
+    if(r.ok){ cam.lost=0; cam.smooth = cam.smooth ? cam.smooth.map((q,i)=>q*.55+r.pts[i]*.45) : r.pts.slice(); drawQuad(cam.smooth); }
+    else if(++cam.lost>2){ cam.smooth=null; drawQuad(null); }
+  }
+  cam.timer=setTimeout(loop,160);
 }
-let autoCrop=true; try{ autoCrop=localStorage.getItem("autoCrop")!=="0"; }catch(e){}
-function showCrop(){ const b=$("cropTgl"); b.textContent="Auto crop: "+(autoCrop?"On":"Off"); b.setAttribute("aria-pressed",String(autoCrop)); }
-$("cropTgl").onclick=()=>{ autoCrop=!autoCrop; try{ localStorage.setItem("autoCrop",autoCrop?"1":"0"); }catch(e){} showCrop(); };
-showCrop();
-$("camBtn").onclick=openCamera;
-$("camDone").onclick=closeCamera;
+async function openCamera(){
+  if(cam.stream) return;
+  if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)){ camFail(); return; }
+  try{
+    cam.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:2560},height:{ideal:1920}}});
+    const v=$("video"); v.srcObject=cam.stream; await v.play();
+    $("start").hidden=true; $("shutter").disabled=false; cam.smooth=null; cam.lost=0;
+    hint(pages.length?"Ready for next scan.":"Position the document in view.",3500);
+    loop();
+  }catch(e){ camFail(); }
+}
+function camFail(){
+  $("start").hidden=false; $("startBtn").textContent="Try the camera again"; $("fileLbl").hidden=false;
+  $("startText").textContent="The camera couldn’t be opened. Allow camera access for this site in Safari, or take the photos with the iPhone camera instead.";
+}
+function stopCamera(){ clearTimeout(cam.timer); if(cam.stream){ cam.stream.getTracks().forEach(t=>t.stop()); cam.stream=null; } $("video").srcObject=null; drawQuad(null); $("shutter").disabled=true; }
+$("startBtn").onclick=openCamera;
+$("fileIn").onchange=e=>{ const fs=[...e.target.files]; fs.forEach(addPhoto); e.target.value=""; if(fs.length) hint("Photos added. Tap Save when you’re done.",4000); };
 $("shutter").onclick=async()=>{
-  const v=$("camVideo"); if(!v.videoWidth) return;
-  const f=$("camFlash"); f.style.opacity=".8"; setTimeout(()=>f.style.opacity="0",120);
+  const v=$("video"); if(!v.videoWidth) return;
+  const f=$("flash"); f.style.opacity=".8"; setTimeout(()=>f.style.opacity="0",120);
   const c=canvas(v.videoWidth,v.videoHeight); c.getContext("2d").drawImage(v,0,0);
   const blob=await toBlob(c,.92); if(!blob) return;
-  cam.count++; $("camCount").textContent=`${cam.count} ${cam.count===1?"page":"pages"}`;
-  const u=URL.createObjectURL(blob); $("camLast").style.backgroundImage=`url(${u})`;
-  addFiles([blob]);
+  addPhoto(blob); hint("Ready for next scan.",2500);
 };
-document.addEventListener("visibilitychange",()=>{ if(document.hidden && cam.stream) closeCamera(); });
-window.addEventListener("resize",()=>{ if(cam.stream) drawGuide(); });
+document.addEventListener("visibilitychange",()=>{ if(document.hidden){ if(cam.stream){ stopCamera(); cam.resume=true; } } else if(cam.resume){ cam.resume=false; openCamera(); } });
+window.addEventListener("resize",()=>{ if(cam.stream) drawQuad(cam.smooth); });
 
-/* ---------- restore previous session ---------- */
+/* ---------- save as PDF ---------- */
+let pendingShare=null;
+function stamp(){ const d=new Date(), z=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}_${z(d.getHours())}-${z(d.getMinutes())}-${z(d.getSeconds())}`; }
+function blobToDataURL(b){ return new Promise(r=>{ const f=new FileReader(); f.onload=()=>r(f.result); f.readAsDataURL(b); }); }
+function copyName(name){ try{ navigator.clipboard && navigator.clipboard.writeText(name.replace(/\.pdf$/i,"")).catch(()=>{}); }catch(e){} }
+async function finished(name,size){ await clearPages(); hint(`${name} saved (${(size/1048576).toFixed(1)} MB). Ready for a new scan.`,6000); }
+async function shareFile(file,name){
+  try{ await navigator.share({files:[file],title:name}); await finished(name,file.size); }
+  catch(err){
+    if(err&&err.name==="AbortError"){ hint("Not saved. Your pages are still here.",3500); return; }
+    if(err&&err.name==="NotAllowedError"){ pendingShare={file,name}; $("save").textContent="Share PDF"; $("save").disabled=false; hint("PDF is ready. Tap “Share PDF”.",6000); return; }
+    hint("The PDF couldn’t be saved.",4000);
+  }
+}
+$("save").onclick=async()=>{
+  if(pendingShare){ copyName(pendingShare.name); shareFile(pendingShare.file,pendingShare.name); return; }
+  if(!pages.length) return;
+  if(!window.jspdf){ hint("The PDF tool didn’t load. Check your connection and reload the page.",5000); return; }
+  const name=`Scan_${stamp()}.pdf`; copyName(name);
+  const sv=$("save"); sv.disabled=true; hint("Making the PDF…");
+  try{
+    let doc=null;
+    for(const p of pages){
+      const land=p.ow>p.oh, pw=land?297:210, ph=land?210:297, url=await blobToDataURL(p.out);
+      if(!doc) doc=new window.jspdf.jsPDF({unit:"mm",format:"a4",orientation:land?"l":"p",compress:true}); else doc.addPage("a4",land?"l":"p");
+      const s=Math.min(pw/p.ow,ph/p.oh), w=p.ow*s, h=p.oh*s;
+      doc.addImage(url,"JPEG",(pw-w)/2,(ph-h)/2,w,h,undefined,"FAST");
+      await new Promise(r=>setTimeout(r,0));
+    }
+    doc.setProperties({title:name.replace(/\.pdf$/i,""),creator:"TaraScan "+VERSION});
+    const out=doc.output("blob");
+    if(dlNS===undefined) dlNS = window.claude && window.claude.use ? await window.claude.use("downloads") : null;
+    if(dlNS){
+      try{ await dlNS.save({filename:name,data:out}); await finished(name,out.size); }
+      catch(err){ hint(err&&err.code==="declined"?"Not saved. Your pages are still here.":"The PDF couldn’t be saved.",4000); }
+    } else {
+      const file=new File([out],name,{type:"application/pdf"});
+      if(navigator.canShare && navigator.canShare({files:[file]})){ sv.disabled=false; await shareFile(file,name); refresh(); return; }
+      const a=document.createElement("a"); a.href=URL.createObjectURL(out); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},4000);
+      await finished(name,out.size);
+    }
+  }catch(e){ hint("The PDF couldn’t be created.",4000); }
+  refresh();
+};
+
+/* ---------- start ---------- */
 (async()=>{
   const recs=await dbAll();
-  for(const r of recs){ if(r.out){ r.url=URL.createObjectURL(r.out); pages.push(r); } }
-  draw();
-  if(pages.length) toast(`Restored ${pages.length} ${pages.length===1?"page":"pages"} from your last session.`);
+  for(const r of recs){ if(r.out){ r.url=URL.createObjectURL(r.out); r.busy=false; pages.push(r); } }
+  refresh();
+  if(pages.length) hint(`${pages.length} ${pages.length===1?"page":"pages"} from your last scan are still here.`,4000);
+  // try to open the camera straight away; if the browser wants a tap first, the start screen stays
+  try{ const st=navigator.permissions && await navigator.permissions.query({name:"camera"}); if(st && st.state==="granted") openCamera(); }catch(e){}
 })();
 })();
 </script>
