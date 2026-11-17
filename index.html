@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>TaraScan v1.2</title>
+<title>TaraScan v2.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
@@ -104,6 +104,30 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 }
 .toast.show{display:block}
 
+/* Live camera */
+.cam{position:fixed;inset:0;z-index:22;background:#000;color:#fff;display:none;flex-direction:column;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.cam.open{display:flex}
+.cam-top{display:flex;justify-content:space-between;align-items:center;padding:8px 14px}
+.cam-top button{min-height:44px;padding:0 6px;color:#fff;font-weight:700}
+.cam-top span{color:#C9CED6;font-size:.95rem;font-variant-numeric:tabular-nums}
+.cam-view{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.cam-view video{max-width:100%;max-height:100%;display:block}
+.cam-view canvas{position:absolute;pointer-events:none}
+.cam-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+@media (prefers-reduced-motion:no-preference){.cam-flash{transition:opacity .25s}}
+.cam-msg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center}
+.cam-msg[hidden]{display:none}
+.cam-bottom{padding:8px 16px 14px}
+.cam-hint{text-align:center;font-size:.95rem;min-height:1.6em;margin-bottom:8px;color:#C9CED6}
+.cam-hint.ok{color:#fff}
+.cam-hint.warn{color:#FFC46B}
+.cam-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;justify-items:center}
+.cam-last{width:44px;height:58px;border-radius:4px;background:#222 center/cover no-repeat;border:1px solid #444;justify-self:start}
+.shutter{width:74px;height:74px;border-radius:50%;background:#fff;border:5px solid #000;box-shadow:0 0 0 3px #fff}
+.shutter:active{transform:scale(.94)}
+.shutter[disabled]{opacity:.4}
+
 /* Editor */
 .editor{
   position:fixed;inset:0;z-index:20;background:#0E0F12;color:#EEF0F3;display:none;flex-direction:column;
@@ -154,7 +178,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 </head>
 <body>
 <header>
-  <h1>TaraScan <span style="font-weight:400;color:var(--muted);font-size:.8em">v1.2</span></h1>
+  <h1>TaraScan <span style="font-weight:400;color:var(--muted);font-size:.8em">v2.0</span></h1>
   <div class="count" id="count"><b>0</b> pages</div>
 </header>
 
@@ -162,7 +186,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
   <section class="empty" id="empty">
     <div class="sheet" aria-hidden="true"></div>
     <h2>Place the page on a dark surface and shoot from straight above.</h2>
-    <p>Edges are found and shadows cleaned up automatically. Tap “Take photo” again for each page; there’s no page limit.</p>
+    <p>The camera outlines the sheet before you shoot, so you can check the whole page is in view. Tap the round button for each page; there’s no page limit.</p>
     <p>When you’re done, “Make PDF” saves every page in one file.</p>
   </section>
   <div class="grid" id="grid" aria-label="Scanned pages"></div>
@@ -170,10 +194,10 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 
 <div class="bar">
   <div class="bar-in">
-    <label class="btn camera" for="camIn">
+    <button class="btn camera" id="camBtn" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
       Take photo
-    </label>
+    </button>
     <label class="btn" for="libIn" title="Add from photos">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>
       Photos
@@ -185,6 +209,31 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- Live camera -->
+<div class="cam" id="cam" role="dialog" aria-modal="true" aria-label="Camera">
+  <div class="cam-top">
+    <button id="camDone" type="button">Done</button>
+    <span id="camCount">0 pages</span>
+  </div>
+  <div class="cam-view" id="camView">
+    <video id="camVideo" playsinline muted autoplay></video>
+    <canvas id="camOverlay" aria-hidden="true"></canvas>
+    <div class="cam-flash" id="camFlash"></div>
+    <div class="cam-msg" id="camMsg" hidden>
+      <p id="camMsgText">The camera couldn’t be opened here.</p>
+      <label class="btn camera" for="camIn">Use the iPhone camera instead</label>
+    </div>
+  </div>
+  <div class="cam-bottom">
+    <div class="cam-hint" id="camHint">Looking for the sheet…</div>
+    <div class="cam-row">
+      <div class="cam-last" id="camLast" aria-hidden="true"></div>
+      <button class="shutter" id="shutter" type="button" aria-label="Take photo" disabled></button>
+      <div class="cam-last" aria-hidden="true" style="visibility:hidden"></div>
+    </div>
+  </div>
+</div>
 
 <!-- Editor -->
 <div class="editor" id="editor" role="dialog" aria-modal="true" aria-label="Edit page">
@@ -227,14 +276,14 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     <p id="pdfInfo"></p>
     <label class="field"><span>File name (date and time are added automatically)</span><input id="pdfName" autocomplete="off"></label>
     <p id="pdfStamp" style="margin-top:-8px"></p>
-    <label class="check"><input type="checkbox" id="pdfSmall"><span>Smaller file (for email; pages are saved at lower resolution)</span></label>
+    <label class="check"><input type="checkbox" id="pdfHigh"><span>High resolution (about 3× larger file; only needed for fine print)</span></label>
     <div class="progress" id="pdfProg"><i></i></div>
     <div class="actions">
       <button class="btn" id="pdfCancel">Cancel</button>
       <button class="btn primary" id="pdfGo">Save</button>
     </div>
     <button class="link" id="clearAll">Delete all pages</button>
-    <p style="margin:10px 0 0;font-size:.8rem">Version v1.2 · 2026-11-17_16-06</p>
+    <p style="margin:10px 0 0;font-size:.8rem">Version v2.0 · 2026-11-17_16-24</p>
   </div>
 </div>
 
@@ -296,21 +345,96 @@ async function normalizeSource(file){
 }
 
 /* ---------- page edge detection ---------- */
-function detectCorners(im){
-  const S = 360, s = S/Math.max(im.naturalWidth, im.naturalHeight);
-  const w = Math.max(8,Math.round(im.naturalWidth*s)), h = Math.max(8,Math.round(im.naturalHeight*s));
+// Finds the sheet by its straight edges (works on light and dark surfaces),
+// falls back to a brightness-based guess, then to the whole photo.
+function detectImage(im){ return detectCorners(im, im.naturalWidth, im.naturalHeight, 400).pts; }
+function detectCorners(im, SW, SH, S){
+  const s = S/Math.max(SW, SH);
+  const w = Math.max(16,Math.round(SW*s)), h = Math.max(16,Math.round(SH*s));
   const c = canvas(w,h), x = c.getContext("2d",{willReadFrequently:true});
   x.drawImage(im,0,0,w,h);
-  const d = x.getImageData(0,0,w,h).data, n=w*h, g=new Uint8Array(n), hist=new Uint32Array(256);
-  for(let i=0;i<n;i++){ const v=(d[i*4]*.299+d[i*4+1]*.587+d[i*4+2]*.114)|0; g[i]=v; hist[v]++; }
-  // Otsu threshold
+  const d = x.getImageData(0,0,w,h).data, n=w*h;
+  let g=new Float32Array(n);
+  for(let i=0;i<n;i++) g[i]=d[i*4]*.299+d[i*4+1]*.587+d[i*4+2]*.114;
+  const blur=a=>{ const o=new Float32Array(n);
+    for(let y=0;y<h;y++) for(let xx=0;xx<w;xx++){ let s2=0,k=0;
+      for(let dy=-1;dy<=1;dy++){ const yy=y+dy; if(yy<0||yy>=h) continue;
+        for(let dx=-1;dx<=1;dx++){ const x2=xx+dx; if(x2<0||x2>=w) continue; s2+=a[yy*w+x2]; k++; } }
+      o[y*w+xx]=s2/k; } return o; };
+  g=blur(blur(g));
+  // Sobel
+  const mag=new Float32Array(n), ang=new Float32Array(n);
+  for(let y=1;y<h-1;y++) for(let xx=1;xx<w-1;xx++){ const p=y*w+xx;
+    const gx=(g[p-w+1]+2*g[p+1]+g[p+w+1])-(g[p-w-1]+2*g[p-1]+g[p+w-1]);
+    const gy=(g[p+w-1]+2*g[p+w]+g[p+w+1])-(g[p-w-1]+2*g[p-w]+g[p-w+1]);
+    mag[p]=Math.hypot(gx,gy); ang[p]=Math.atan2(gy,gx); }
+  const sorted=Float32Array.from(mag).sort();
+  const thr=Math.max(18, sorted[Math.floor(n*.90)]);
+  // Hough transform, voting only near each pixel's gradient direction
+  const NT=180, D=Math.ceil(Math.hypot(w,h)), NR=2*D+1, acc=new Float32Array(NT*NR);
+  const cs=new Float32Array(NT), sn=new Float32Array(NT);
+  for(let t=0;t<NT;t++){ cs[t]=Math.cos(t*Math.PI/180); sn[t]=Math.sin(t*Math.PI/180); }
+  for(let y=1;y<h-1;y++) for(let xx=1;xx<w-1;xx++){ const p=y*w+xx; if(mag[p]<thr) continue;
+    let t0=Math.round(ang[p]*180/Math.PI); t0=((t0%180)+180)%180;
+    for(let dt=-5;dt<=5;dt++){ const t=(t0+dt+180)%180; const r=Math.round(xx*cs[t]+y*sn[t])+D; acc[t*NR+r]+=1; } }
+  // peaks
+  const peaks=[];
+  for(let k=0;k<40;k++){ let bi=-1,bv=w*.12;
+    for(let i=0;i<acc.length;i++) if(acc[i]>bv){bv=acc[i];bi=i;}
+    if(bi<0) break; const t=(bi/NR)|0, r=bi%NR-D; peaks.push({t,r,v:bv});
+    for(let dt=-7;dt<=7;dt++){ const tt=(t+dt+180)%180; const flip=(t+dt<0||t+dt>=180);
+      const rr0=flip?-r:r; for(let dr=-10;dr<=10;dr++){ const ri=rr0+dr+D; if(ri>=0&&ri<NR) acc[tt*NR+ri]=0; } } }
+  const line=(t,r)=>({t,r,a:cs[t],b:sn[t]});
+  let H=peaks.filter(p=>Math.abs(p.t-90)<35).slice(0,10).map(p=>line(p.t,p.r));
+  let V=peaks.filter(p=>p.t<35||p.t>145).slice(0,10).map(p=>line(p.t,p.r));
+  // image borders as candidates for a sheet that runs past the frame
+  H.push({...line(90,1),border:1},{...line(90,h-2),border:1});
+  V.push({...line(0,1),border:1},{...line(0,w-2),border:1});
+  const inter=(L1,L2)=>{ const det=L1.a*L2.b-L1.b*L2.a; if(Math.abs(det)<1e-6) return null;
+    return [(L1.r*L2.b-L1.b*L2.r)/det,(L1.a*L2.r-L1.r*L2.a)/det]; };
+  const magAt=(px,py)=>{ let m=0; const xi=Math.round(px), yi=Math.round(py);
+    for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ const X=xi+dx,Y=yi+dy; if(X<1||Y<1||X>=w-1||Y>=h-1) continue; const v=mag[Y*w+X]; if(v>m)m=v; } return m; };
+  const gAt=(px,py)=>{ const X=Math.min(w-1,Math.max(0,Math.round(px))), Y=Math.min(h-1,Math.max(0,Math.round(py))); return g[Y*w+X]; };
+  const side=(A,B,isBorder,cx,cy)=>{ // edge support + brightness step across the side
+    if(isBorder) return {sup:.45, con:0};
+    let hit=0, con=0; const N=36;
+    for(let i=1;i<N;i++){ const u=i/N, px=A[0]+(B[0]-A[0])*u, py=A[1]+(B[1]-A[1])*u;
+      if(magAt(px,py)>thr*.8) hit++;
+      let nx=cx-px, ny=cy-py; const L=Math.hypot(nx,ny)||1; nx/=L; ny/=L;
+      con+=gAt(px+nx*4,py+ny*4)-gAt(px-nx*4,py-ny*4); }
+    return {sup:hit/(N-1), con:con/(N-1)/255}; };
+  let best=null;
+  for(let i=0;i<H.length;i++) for(let j=i+1;j<H.length;j++){
+    let T=H[i], B=H[j]; const yT=-(T.a*w/2-T.r)/T.b, yB=-(B.a*w/2-B.r)/B.b; if(yT>yB){const q=T;T=B;B=q;}
+    if(Math.abs(yB-yT)<h*.3) continue;
+    for(let k=0;k<V.length;k++) for(let l=k+1;l<V.length;l++){
+      let Lf=V[k], R=V[l]; const xL=(Lf.r-Lf.b*h/2)/Lf.a, xR=(R.r-R.b*h/2)/R.a; if(xL>xR){const q=Lf;Lf=R;R=q;}
+      if(Math.abs((R.r-R.b*h/2)/R.a-(Lf.r-Lf.b*h/2)/Lf.a)<w*.3) continue;
+      const tl=inter(T,Lf), tr=inter(T,R), br=inter(B,R), bl=inter(B,Lf); if(!tl||!tr||!br||!bl) continue;
+      const P=[tl,tr,br,bl]; if(P.some(p=>p[0]<-w*.04||p[0]>w*1.04||p[1]<-h*.04||p[1]>h*1.04)) continue;
+      const area=Math.abs(shoelace(P.map(p=>[p[0]/w,p[1]/h]))); if(area<.3) continue;
+      const cx=(tl[0]+tr[0]+br[0]+bl[0])/4, cy=(tl[1]+tr[1]+br[1]+bl[1])/4;
+      const sd=[side(tl,tr,T.border,cx,cy),side(tr,br,R.border,cx,cy),side(br,bl,B.border,cx,cy),side(bl,tl,Lf.border,cx,cy)];
+      const sup=sd.map(z=>z.sup), meanS=(sup[0]+sup[1]+sup[2]+sup[3])/4, minS=Math.min(...sup);
+      const con=(sd[0].con+sd[1].con+sd[2].con+sd[3].con)/4;
+      const borders=(T.border?1:0)+(B.border?1:0)+(Lf.border?1:0)+(R.border?1:0);
+      if(minS<.3 || borders>2) continue;
+      const score=meanS+.5*minS+2.5*con+1.6*area-.1*borders;
+      if(!best||score>best.score) best={score,P,borders};
+    } }
+  if(best) return {pts:best.P.flatMap(p=>[Math.min(1,Math.max(0,p[0]/w)),Math.min(1,Math.max(0,p[1]/h))]), ok:true, borders:best.borders};
+  const pts=brightCorners(g,w,h); const isFull=pts.join()==="0,0,1,0,1,1,0,1";
+  return {pts, ok:!isFull, borders:0};
+}
+function brightCorners(g,w,h){
+  const n=w*h, hist=new Uint32Array(256);
+  for(let i=0;i<n;i++) hist[Math.min(255,g[i]|0)]++;
   let sum=0; for(let i=0;i<256;i++) sum+=i*hist[i];
   let sB=0,wB=0,best=0,t=128;
   for(let i=0;i<256;i++){ wB+=hist[i]; if(!wB) continue; const wF=n-wB; if(!wF) break;
     sB+=i*hist[i]; const mB=sB/wB, mF=(sum-sB)/wF, v=wB*wF*(mB-mF)*(mB-mF); if(v>best){best=v;t=i;} }
-  const m = new Uint8Array(n); for(let i=0;i<n;i++) m[i]= g[i]>t ? 1:0;
-  // largest bright component
-  const lab = new Int32Array(n), q = new Int32Array(n); let bestLab=0,bestSize=0,cur=0;
+  const m=new Uint8Array(n); for(let i=0;i<n;i++) m[i]=g[i]>t?1:0;
+  const lab=new Int32Array(n), q=new Int32Array(n); let bestLab=0,bestSize=0,cur=0;
   for(let i=0;i<n;i++){ if(!m[i]||lab[i]) continue; cur++; let h0=0,t0=0; q[t0++]=i; lab[i]=cur; let size=0;
     while(h0<t0){ const p=q[h0++]; size++; const px=p%w, py=(p/w)|0;
       if(px>0&&m[p-1]&&!lab[p-1]){lab[p-1]=cur;q[t0++]=p-1;}
@@ -318,17 +442,13 @@ function detectCorners(im){
       if(py>0&&m[p-w]&&!lab[p-w]){lab[p-w]=cur;q[t0++]=p-w;}
       if(py<h-1&&m[p+w]&&!lab[p+w]){lab[p+w]=cur;q[t0++]=p+w;} }
     if(size>bestSize){bestSize=size;bestLab=cur;} }
-  const full = [0,0,1,0,1,1,0,1];
-  if(bestSize < n*.15 || bestSize > n*.97) return full;
-  let tl=[0,0,Infinity], tr=[0,0,-Infinity], br=[0,0,-Infinity], bl=[0,0,Infinity];
-  for(let i=0;i<n;i++){ if(lab[i]!==bestLab) continue; const px=i%w, py=(i/w)|0;
-    const a=px+py, b=px-py;
-    if(a<tl[2]) tl=[px,py,a]; if(a>br[2]) br=[px,py,a];
-    if(b>tr[2]) tr=[px,py,b]; if(b<bl[2]) bl=[px,py,b]; }
+  const full=[0,0,1,0,1,1,0,1];
+  if(bestSize<n*.15||bestSize>n*.97) return full;
+  let tl=[0,0,Infinity],tr=[0,0,-Infinity],br=[0,0,-Infinity],bl=[0,0,Infinity];
+  for(let i=0;i<n;i++){ if(lab[i]!==bestLab) continue; const px=i%w, py=(i/w)|0, a=px+py, b=px-py;
+    if(a<tl[2])tl=[px,py,a]; if(a>br[2])br=[px,py,a]; if(b>tr[2])tr=[px,py,b]; if(b<bl[2])bl=[px,py,b]; }
   const pts=[tl,tr,br,bl].map(p=>[(p[0]+.5)/w,(p[1]+.5)/h]);
-  // sanity: quad area
-  const A = Math.abs(shoelace(pts));
-  if(A < .15) return full;
+  if(Math.abs(shoelace(pts))<.15) return full;
   return pts.flat();
 }
 function shoelace(p){ let a=0; for(let i=0;i<4;i++){ const j=(i+1)%4; a+=p[i][0]*p[j][1]-p[j][0]*p[i][1]; } return a/2; }
@@ -432,14 +552,14 @@ function addFiles(files){
       try{
         p.orig = await normalizeSource(f);
         const im = await loadImg(p.orig);
-        p.corners = detectCorners(im);
+        p.corners = detectImage(im);
         await render(p); p.busy=false; await dbPut(p);
       }catch(e){ pages=pages.filter(q=>q!==p); toast("A photo couldn’t be read. Try taking it again."); }
       draw();
     });
   });
 }
-$("camIn").onchange=e=>{ if(e.target.files.length) addFiles(e.target.files); e.target.value=""; };
+$("camIn").onchange=e=>{ if(e.target.files.length) addFiles(e.target.files); e.target.value=""; if(typeof closeCamera==="function" && $("cam").classList.contains("open")) closeCamera(); };
 $("libIn").onchange=e=>{ if(e.target.files.length) addFiles(e.target.files); e.target.value=""; };
 
 /* ---------- editor ---------- */
@@ -482,7 +602,7 @@ window.addEventListener("resize",()=>{ if(ed) fitStage(); });
 document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{ ed.filter=b.dataset.f; setSeg(); });
 $("edRot").onclick=()=>{ ed.rot=(ed.rot+1)%4; toast(`Will be rotated ${ed.rot*90}° when you save.`); };
 $("edFull").onclick=()=>{ ed.corners=[0,0,1,0,1,1,0,1]; placeHandles(); };
-$("edAuto").onclick=async()=>{ const im=await loadImg(ed.p.orig); ed.corners=detectCorners(im); placeHandles(); };
+$("edAuto").onclick=async()=>{ const im=await loadImg(ed.p.orig); ed.corners=detectImage(im); placeHandles(); };
 $("edCancel").onclick=closeEditor;
 $("edSave").onclick=async()=>{
   const p=ed.p; $("edBusy").classList.add("on");
@@ -512,7 +632,7 @@ $("pdfBtn").onclick=()=>{
   try{ $("pdfName").value=localStorage.getItem("pdfPrefix")||"Scan"; }catch(e){ $("pdfName").value="Scan"; }
   $("pdfStamp").textContent=`Saves as: ${fileName()}`;
   $("pdfInfo").textContent=`${pages.length} ${pages.length===1?"page":"pages"} will be combined into one PDF.`;
-  $("pdfProg").classList.remove("on"); $("pdfGo").disabled=false;
+  $("pdfProg").classList.remove("on"); $("pdfGo").disabled=false; pendingShare=null; $("pdfGo").textContent="Save";
   $("pdfDlg").classList.add("open");
 };
 $("pdfCancel").onclick=()=>$("pdfDlg").classList.remove("open");
@@ -524,12 +644,36 @@ async function shrink(blob, max){
   const c=canvas(Math.round(im.naturalWidth*s),Math.round(im.naturalHeight*s)); c.getContext("2d").drawImage(im,0,0,c.width,c.height);
   return toBlob(c,.72);
 }
+let pendingShare=null;
+async function shareFile(file,name){
+  try{
+    await navigator.share({files:[file],title:name});
+    pendingShare=null; $("pdfGo").textContent="Save";
+    $("pdfDlg").classList.remove("open");
+    toast(`${name} ready (${(file.size/1048576).toFixed(1)} MB). File name copied: paste it as the email subject.`);
+  }catch(err){
+    if(err&&err.name==="AbortError"){ toast("Save cancelled."); return; }
+    if(err&&err.name==="NotAllowedError"){
+      // the tap expired while the PDF was being built: ask for one more tap
+      pendingShare={file,name}; $("pdfGo").textContent="Share PDF"; $("pdfGo").disabled=false;
+      toast("PDF is ready. Tap “Share PDF” to send or save it."); return;
+    }
+    toast("The file couldn’t be saved.");
+  }
+}
 $("pdfGo").onclick=async()=>{
+  if(pendingShare){
+    try{ navigator.clipboard && navigator.clipboard.writeText(pendingShare.name.replace(/\.pdf$/i,"")); }catch(e){}
+    shareFile(pendingShare.file,pendingShare.name); return;
+  }
   if(!window.jspdf){ toast("The PDF tool didn’t load. Check your connection and reload the page."); return; }
+  const name=fileName();
+  // copy the file name now, while the tap still counts, so it can be pasted as the email subject
+  try{ navigator.clipboard && navigator.clipboard.writeText(name.replace(/\.pdf$/i,"")).catch(()=>{}); }catch(e){}
   const go=$("pdfGo"); go.disabled=true;
   const prog=$("pdfProg"), bar=prog.querySelector("i"); prog.classList.add("on"); bar.style.width="0";
   try{
-    const small=$("pdfSmall").checked; let doc=null;
+    const small=!$("pdfHigh").checked; let doc=null;
     for(let i=0;i<pages.length;i++){
       const p=pages[i], land=p.ow>p.oh, pw=land?297:210, ph=land?210:297;
       const blob= small ? await shrink(p.out,1400) : p.out;
@@ -541,25 +685,22 @@ $("pdfGo").onclick=async()=>{
       bar.style.width=Math.round((i+1)/pages.length*90)+"%";
       await new Promise(r=>setTimeout(r,0));
     }
+    doc.setProperties({title:name.replace(/\.pdf$/i,""),creator:"TaraScan"});
     const out=doc.output("blob"); bar.style.width="100%";
-    const name=fileName();
     try{ localStorage.setItem("pdfPrefix",$("pdfName").value.trim()||"Scan"); }catch(e){}
     if(dlNS===undefined) dlNS = window.claude && window.claude.use ? await window.claude.use("downloads") : null;
     if(!dlNS){
-      // Outside Claude: share sheet first (iPhone), otherwise a normal download
+      // Outside Claude: share sheet (iPhone), otherwise a normal download
       const file=new File([out],name,{type:"application/pdf"});
-      try{
-        if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:name}); }
-        else { const a=document.createElement("a"); a.href=URL.createObjectURL(out); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},4000); }
-        $("pdfDlg").classList.remove("open");
-        toast(`${name} ready (${(out.size/1048576).toFixed(1)} MB).`);
-      }catch(err){ toast(err&&err.name==="AbortError"?"Save cancelled.":"The file couldn’t be saved."); }
+      if(navigator.canShare && navigator.canShare({files:[file]})){ go.disabled=false; await shareFile(file,name); return; }
+      const a=document.createElement("a"); a.href=URL.createObjectURL(out); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},4000);
+      $("pdfDlg").classList.remove("open"); toast(`${name} downloaded (${(out.size/1048576).toFixed(1)} MB).`);
       go.disabled=false; return;
     }
     try{
       await dlNS.save({filename:name, data:out});
       $("pdfDlg").classList.remove("open");
-      toast(`${name} saved (${(out.size/1048576).toFixed(1)} MB).`);
+      toast(`${name} saved (${(out.size/1048576).toFixed(1)} MB). File name copied: paste it as the email subject.`);
     }catch(err){
       const c=err&&err.code;
       if(c==="declined") toast("Save cancelled.");
@@ -574,6 +715,71 @@ $("clearAll").onclick=async()=>{
   for(const p of pages){ if(p.url) URL.revokeObjectURL(p.url); await dbDel(p.id); }
   pages=[]; $("pdfDlg").classList.remove("open"); draw();
 };
+
+/* ---------- live camera ---------- */
+const cam={stream:null, timer:0, smooth:null, lost:0, count:0};
+function camHint(text,cls){ const h=$("camHint"); h.textContent=text; h.className="cam-hint"+(cls?" "+cls:""); }
+async function openCamera(){
+  $("cam").classList.add("open"); document.body.style.overflow="hidden";
+  cam.count=0; $("camCount").textContent="0 pages"; $("camLast").style.backgroundImage="";
+  $("camMsg").hidden=true; $("shutter").disabled=true; camHint("Opening the camera…");
+  if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)){ camFail(); return; }
+  try{
+    cam.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:2560},height:{ideal:1920}}});
+    const v=$("camVideo"); v.srcObject=cam.stream; await v.play();
+    $("shutter").disabled=false; camHint("Looking for the sheet…"); cam.smooth=null; cam.lost=0;
+    loop();
+  }catch(e){ camFail(); }
+}
+function camFail(){
+  $("camMsg").hidden=false; camHint("");
+  $("camMsgText").textContent="The camera couldn’t be opened here. Allow camera access in Safari, or use the iPhone camera instead.";
+}
+function closeCamera(){
+  clearTimeout(cam.timer); cam.timer=0;
+  if(cam.stream){ cam.stream.getTracks().forEach(t=>t.stop()); cam.stream=null; }
+  $("camVideo").srcObject=null; $("cam").classList.remove("open"); document.body.style.overflow="";
+}
+function overlayBox(){
+  const v=$("camVideo"), o=$("camOverlay"), r=v.getBoundingClientRect(), pr=v.parentElement.getBoundingClientRect();
+  o.style.left=(r.left-pr.left)+"px"; o.style.top=(r.top-pr.top)+"px"; o.style.width=r.width+"px"; o.style.height=r.height+"px";
+  const dpr=window.devicePixelRatio||1; if(o.width!==Math.round(r.width*dpr)){ o.width=Math.round(r.width*dpr); o.height=Math.round(r.height*dpr); }
+  return {o,W:o.width,H:o.height,dpr};
+}
+function drawQuad(pts){
+  const {o,W,H,dpr}=overlayBox(), x=o.getContext("2d"); x.clearRect(0,0,W,H); if(!pts) return;
+  x.beginPath(); for(let i=0;i<4;i++){ const px=pts[i*2]*W, py=pts[i*2+1]*H; i?x.lineTo(px,py):x.moveTo(px,py); } x.closePath();
+  x.fillStyle="rgba(228,107,163,.22)"; x.fill(); x.lineWidth=3*dpr; x.strokeStyle="#E46BA3"; x.stroke();
+  x.fillStyle="#fff"; for(let i=0;i<4;i++){ x.beginPath(); x.arc(pts[i*2]*W,pts[i*2+1]*H,5*dpr,0,7); x.fill(); }
+}
+function loop(){
+  if(!cam.stream) return;
+  const v=$("camVideo");
+  if(v.videoWidth){
+    const r=detectCorners(v, v.videoWidth, v.videoHeight, 320);
+    if(r.ok){
+      cam.lost=0;
+      cam.smooth = cam.smooth ? cam.smooth.map((q,i)=>q*.5+r.pts[i]*.5) : r.pts.slice();
+      drawQuad(cam.smooth);
+      if(r.borders>0) camHint("Part of the sheet may be outside the frame. Move the phone back a little.","warn");
+      else camHint("Sheet found. Tap the button to take the photo.","ok");
+    } else if(++cam.lost>3){ cam.smooth=null; drawQuad(null); camHint("Looking for the sheet… Fit the whole page in view."); }
+  }
+  cam.timer=setTimeout(loop,180);
+}
+$("camBtn").onclick=openCamera;
+$("camDone").onclick=closeCamera;
+$("shutter").onclick=async()=>{
+  const v=$("camVideo"); if(!v.videoWidth) return;
+  const f=$("camFlash"); f.style.opacity=".8"; setTimeout(()=>f.style.opacity="0",120);
+  const c=canvas(v.videoWidth,v.videoHeight); c.getContext("2d").drawImage(v,0,0);
+  const blob=await toBlob(c,.92); if(!blob) return;
+  cam.count++; $("camCount").textContent=`${cam.count} ${cam.count===1?"page":"pages"}`;
+  const u=URL.createObjectURL(blob); $("camLast").style.backgroundImage=`url(${u})`;
+  addFiles([blob]);
+};
+document.addEventListener("visibilitychange",()=>{ if(document.hidden && cam.stream) closeCamera(); });
+window.addEventListener("resize",()=>{ if(cam.stream) drawQuad(cam.smooth); });
 
 /* ---------- restore previous session ---------- */
 (async()=>{
