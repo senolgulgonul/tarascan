@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>TaraScan v3.0</title>
+<title>TaraScan v3.1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
@@ -61,7 +61,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 <body>
 <div class="top">
   <button id="cancel" class="ghost" type="button">Cancel</button>
-  <span class="name">TaraScan v3.0</span>
+  <span class="name">TaraScan v3.1</span>
   <button class="ghost" type="button" aria-hidden="true" tabindex="-1">Cancel</button>
 </div>
 
@@ -88,7 +88,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 <script>
 (() => {
 "use strict";
-const VERSION = "v3.0 · 2026-11-17_17-39";
+const VERSION = "v3.1 · 2026-11-17_17-46";
 const MAX_SRC = 2400;   // stored original long edge
 const MAX_OUT = 1500;   // page long edge in the PDF (about 0.5 MB per page)
 let pages = [];          // {id, order, orig, corners, filter, rot, out, url, busy}
@@ -167,7 +167,7 @@ function detectCorners(im, SW, SH, fast){
       return o; };
     R=box(R,w,h,2); G=box(G,w,h,2); B=box(B,w,h,2);
     const F0=new Float32Array(n), F1=new Float32Array(n), F2=new Float32Array(n);
-    for(let i=0;i<n;i++){ const L=(R[i]+G[i]+B[i])/3; F0[i]=R[i]-L; F1[i]=B[i]-L; F2[i]=.12*L; }
+    for(let i=0;i<n;i++){ const L=(R[i]+G[i]+B[i])/3, Ln=Math.max(L,40)/200; F0[i]=(R[i]-L)/Ln; F1[i]=(B[i]-L)/Ln; F2[i]=.12*L; }   // chroma relative to brightness: stable under shadows
     // paper colour: brighter pixels in the central box
     const ci=[]; for(let y=Math.floor(h*.35);y<Math.floor(h*.65);y++) for(let xx=Math.floor(w*.35);xx<Math.floor(w*.65);xx++) ci.push(y*w+xx);
     const ls=Float32Array.from(ci,i=>F2[i]).sort(), cut=ls[Math.floor(ls.length*.6)];
@@ -312,26 +312,27 @@ function enhance(c, mode){
   if(mode==="none") return c;
   const w=c.width, h=c.height, x=c.getContext("2d",{willReadFrequently:true});
   const img=x.getImageData(0,0,w,h), d=img.data;
-  // background (paper + shadow) estimate on a small grid: max filter then box blur
-  const k=16, sw=Math.ceil(w/k), sh=Math.ceil(h/k), sm=new Float32Array(sw*sh);
-  for(let j=0;j<sh;j++) for(let i=0;i<sw;i++){
-    let mx=0; const yb=Math.min(h,(j+1)*k), xb=Math.min(w,(i+1)*k);
-    for(let y=j*k;y<yb;y+=2) for(let xx=i*k;xx<xb;xx+=2){ const p=(y*w+xx)*4; const L=d[p]*.299+d[p+1]*.587+d[p+2]*.114; if(L>mx) mx=L; }
-    sm[j*sw+i]=mx; }
-  const filt=(arr,fn)=>{ const r=new Float32Array(sw*sh); for(let j=0;j<sh;j++) for(let i=0;i<sw;i++){ let acc=fn===Math.max?0:0, cnt=0, mx=0;
+  // paper colour + shadow estimate per colour channel on a small grid (max filter, then blur),
+  // so tinted paper and uneven light both come out white while ink keeps its colour
+  const k=16, sw=Math.ceil(w/k), sh=Math.ceil(h/k);
+  const filt=(arr,useMax)=>{ const r=new Float32Array(sw*sh); for(let j=0;j<sh;j++) for(let i=0;i<sw;i++){ let acc=0, cnt=0, mx=0;
       for(let dj=-2;dj<=2;dj++) for(let di=-2;di<=2;di++){ const jj=j+dj, ii=i+di; if(jj<0||ii<0||jj>=sh||ii>=sw) continue; const v=arr[jj*sw+ii]; acc+=v; cnt++; if(v>mx) mx=v; }
-      r[j*sw+i]= fn===Math.max ? mx : acc/cnt; } return r; };
-  let bg = filt(sm,Math.max); bg = filt(bg,null); bg = filt(bg,null);
-  for(let i=0;i<bg.length;i++) if(bg[i]<60) bg[i]=60;
+      r[j*sw+i]= useMax ? mx : acc/cnt; } return r; };
+  const bg=[0,1,2].map(q=>{ const sm=new Float32Array(sw*sh);
+    for(let j=0;j<sh;j++) for(let i=0;i<sw;i++){ let mx=0; const yb=Math.min(h,(j+1)*k), xb=Math.min(w,(i+1)*k);
+      for(let y=j*k;y<yb;y+=2) for(let xx=i*k;xx<xb;xx+=2){ const v=d[(y*w+xx)*4+q]; if(v>mx) mx=v; }
+      sm[j*sw+i]=mx; }
+    let g=filt(sm,true); g=filt(g,false); g=filt(g,false);
+    for(let i=0;i<g.length;i++) if(g[i]<60) g[i]=60;
+    return g; });
   const bw = mode==="bw", gray = mode==="gray"||bw;
   for(let y=0;y<h;y++){ const fy=Math.min(sh-1.001,Math.max(0,(y+.5)/k-.5)), jy=fy|0, ty=fy-jy;
     for(let xx=0;xx<w;xx++){ const fx=Math.min(sw-1.001,Math.max(0,(xx+.5)/k-.5)), ix=fx|0, tx=fx-ix;
-      const b00=bg[jy*sw+ix], b01=bg[jy*sw+ix+1], b10=bg[(jy+1)*sw+ix], b11=bg[(jy+1)*sw+ix+1];
-      const B=(b00+(b01-b00)*tx)+((b10+(b11-b10)*tx)-(b00+(b01-b00)*tx))*ty;
-      const p=(y*w+xx)*4, sc=255/B;
-      if(gray){ let L=(d[p]*.299+d[p+1]*.587+d[p+2]*.114)*sc; L=255-(255-L)*1.35; if(L<0)L=0; if(L>255)L=255;
-        if(bw) L = L<170?0:255; d[p]=d[p+1]=d[p+2]=L; }
-      else { for(let q=0;q<3;q++){ let v=d[p+q]*sc; v=255-(255-v)*1.25; d[p+q]= v<0?0:v>255?255:v; } }
+      const i00=jy*sw+ix, i10=i00+sw, p=(y*w+xx)*4; let L=0;
+      for(let q=0;q<3;q++){ const g=bg[q], top=g[i00]+(g[i00+1]-g[i00])*tx, bot=g[i10]+(g[i10+1]-g[i10])*tx;
+        let v=d[p+q]*255/((top+(bot-top)*ty)*.93); v=255-(255-v)*1.25;   // .93: push paper grain to clean white v= v<0?0:v>255?255:v;
+        if(gray) L+=v*(q===0?.299:q===1?.587:.114); else d[p+q]=v; }
+      if(gray){ if(bw) L=L<170?0:255; d[p]=d[p+1]=d[p+2]=L; }
     } }
   x.putImageData(img,0,0);
   return c;
