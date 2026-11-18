@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>TaraScan v3.4</title>
+<title>TaraScan v4.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
@@ -34,7 +34,6 @@ button:focus-visible,label:focus-visible{outline:3px solid var(--accent);outline
 
 .view{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .view video{max-width:100%;max-height:100%;display:block}
-.view canvas{position:absolute;pointer-events:none}
 .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
 @media (prefers-reduced-motion:no-preference){ .flash{transition:opacity .25s} }
 .hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);max-width:calc(100% - 32px);text-align:center;
@@ -61,18 +60,17 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 <body>
 <div class="top">
   <button id="cancel" class="ghost" type="button">Cancel</button>
-  <span class="name">TaraScan v3.4</span>
+  <span class="name">TaraScan v4.0</span>
   <button class="ghost" type="button" aria-hidden="true" tabindex="-1">Cancel</button>
 </div>
 
 <div class="view" id="view">
   <video id="video" playsinline muted autoplay></video>
-  <canvas id="overlay" aria-hidden="true"></canvas>
   <div class="flash" id="flash"></div>
   <div class="hint" id="hint" role="status" aria-live="polite"></div>
   <div class="start" id="start">
     <h1>TaraScan</h1>
-    <p id="startText">Scan paper pages into one PDF. The page is found, cropped and cleaned up for you.</p>
+    <p id="startText">Scan paper pages into one PDF. Each photo is cleaned up so the paper comes out white and easy to read.</p>
     <button class="big" id="startBtn" type="button">Open camera</button>
     <label class="big" id="fileLbl" for="fileIn" hidden>Take photos with the iPhone camera</label>
     <input type="file" id="fileIn" accept="image/*" multiple>
@@ -88,11 +86,9 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 <script>
 (() => {
 "use strict";
-const VERSION = "v3.4 · 2026-11-17_18-19";
-const MAX_SRC = 2400;   // stored original long edge
-const MAX_OUT = 1500;   // page long edge in the PDF (about 0.5 MB per page)
-let pages = [];          // {id, order, orig, corners, filter, rot, out, url, busy}
-let dlNS;                // downloads namespace (lazy)
+const VERSION = "v4.0 · 2026-11-18_11-07";
+const MAX_OUT = 1500;   // page long edge in the PDF (about 0.4 MB per page)
+let pages = [];          // {id, order, out, ow, oh, url, busy}
 const $ = id => document.getElementById(id);
 
 /* ---------- storage (per-device, optional) ---------- */
@@ -135,189 +131,25 @@ function loadImg(blob){
 function canvas(w,h){ const c=document.createElement("canvas"); c.width=w; c.height=h; return c; }
 function toBlob(c,q=.88){ return new Promise(r=>c.toBlob(b=>r(b),"image/jpeg",q)); }
 
-async function normalizeSource(file){
-  const im = await loadImg(file);
-  const s = Math.min(1, MAX_SRC/Math.max(im.naturalWidth, im.naturalHeight));
-  const c = canvas(Math.round(im.naturalWidth*s), Math.round(im.naturalHeight*s));
-  c.getContext("2d").drawImage(im,0,0,c.width,c.height);
-  return toBlob(c,.9);
-}
-
-/* ---------- page edge detection ---------- */
-// 1) learn the paper colour from the middle of the photo and the surface colours from its border,
-// 2) keep the paper-coloured region around the centre, 3) fit four straight sides to its outline,
-// 4) pull each side in to the top sheet when the sheet lies on a stack.
-function detectImage(im){ return detectCorners(im, im.naturalWidth, im.naturalHeight, false).pts; }
-function shoelace(p){ let a=0; for(let i=0;i<4;i++){ const j=(i+1)%4; a+=p[i][0]*p[j][1]-p[j][0]*p[i][1]; } return a/2; }
-function detectCorners(im, SW, SH, fast){
-  const FULL={pts:[0,0,1,0,1,1,0,1], ok:false, borders:0};
-  try{
-    const s2=(fast?400:800)/Math.max(SW,SH);
-    const w=Math.max(24,Math.round(SW*s2/2)), h=Math.max(24,Math.round(SH*s2/2)), W2=w*2, H2=h*2, n=w*h;
-    const c=canvas(W2,H2), x=c.getContext("2d",{willReadFrequently:true}); x.imageSmoothingQuality="high"; x.drawImage(im,0,0,W2,H2);
-    const d=x.getImageData(0,0,W2,H2).data;
-    // half-size colour planes (2x2 average), then 5x5 box blur
-    let R=new Float32Array(n), G=new Float32Array(n), B=new Float32Array(n);
-    for(let y=0;y<h;y++) for(let xx=0;xx<w;xx++){ let r=0,g=0,b=0;
-      for(let dy=0;dy<2;dy++) for(let dx=0;dx<2;dx++){ const p=((y*2+dy)*W2+xx*2+dx)*4; r+=d[p]; g+=d[p+1]; b+=d[p+2]; }
-      const i=y*w+xx; R[i]=r/4; G[i]=g/4; B[i]=b/4; }
-    const box=(a,ww,hh,rad)=>{ const t=new Float32Array(a.length), o=new Float32Array(a.length);
-      for(let y=0;y<hh;y++) for(let xx=0;xx<ww;xx++){ let sum=0,k=0; for(let q=-rad;q<=rad;q++){ const X=xx+q; if(X<0||X>=ww) continue; sum+=a[y*ww+X]; k++; } t[y*ww+xx]=sum/k; }
-      for(let y=0;y<hh;y++) for(let xx=0;xx<ww;xx++){ let sum=0,k=0; for(let q=-rad;q<=rad;q++){ const Y=y+q; if(Y<0||Y>=hh) continue; sum+=t[Y*ww+xx]; k++; } o[y*ww+xx]=sum/k; }
-      return o; };
-    R=box(R,w,h,2); G=box(G,w,h,2); B=box(B,w,h,2);
-    const F0=new Float32Array(n), F1=new Float32Array(n), F2=new Float32Array(n);
-    for(let i=0;i<n;i++){ const L=(R[i]+G[i]+B[i])/3, Ln=Math.max(L,40)/200; F0[i]=(R[i]-L)/Ln; F1[i]=(B[i]-L)/Ln; F2[i]=.12*L; }   // chroma relative to brightness: stable under shadows
-    // paper colour: brighter pixels in the central box
-    const ci=[]; for(let y=Math.floor(h*.35);y<Math.floor(h*.65);y++) for(let xx=Math.floor(w*.35);xx<Math.floor(w*.65);xx++) ci.push(y*w+xx);
-    const ls=Float32Array.from(ci,i=>F2[i]).sort(), cut=ls[Math.floor(ls.length*.6)];
-    let p0=0,p1=0,p2=0,pk=0; for(const i of ci) if(F2[i]>=cut){ p0+=F0[i]; p1+=F1[i]; p2+=F2[i]; pk++; }
-    p0/=pk; p1/=pk; p2/=pk;
-    // surface colours: 3 clusters of the border band
-    const bw=Math.max(2,Math.floor(Math.min(w,h)*.04)), bi=[];
-    for(let y=0;y<h;y++) for(let xx=0;xx<w;xx++) if(y<bw||y>=h-bw||xx<bw||xx>=w-bw) bi.push(y*w+xx);
-    bi.sort((a,b)=>F2[a]-F2[b]);
-    const cen=[0,1,2].map(k=>{ const a=Math.floor(bi.length*k/3), b=Math.floor(bi.length*(k+1)/3); let q0=0,q1=0,q2=0;
-      for(let j=a;j<b;j++){ q0+=F0[bi[j]]; q1+=F1[bi[j]]; q2+=F2[bi[j]]; } const m=b-a||1; return [q0/m,q1/m,q2/m]; });
-    const dist=(i,q)=>{ const a=F0[i]-q[0], b=F1[i]-q[1], e=F2[i]-q[2]; return a*a+b*b+e*e; };
-    for(let it=0;it<8;it++){ const acc=[[0,0,0,0],[0,0,0,0],[0,0,0,0]];
-      for(const i of bi){ let bk=0,bd=Infinity; for(let k=0;k<3;k++){ const v=dist(i,cen[k]); if(v<bd){bd=v;bk=k;} } const A=acc[bk]; A[0]+=F0[i]; A[1]+=F1[i]; A[2]+=F2[i]; A[3]++; }
-      for(let k=0;k<3;k++) if(acc[k][3]) cen[k]=[acc[k][0]/acc[k][3],acc[k][1]/acc[k][3],acc[k][2]/acc[k][3]]; }
-    const pc=[p0,p1,p2];
-    let m=new Uint8Array(n);
-    for(let i=0;i<n;i++){ const dp=dist(i,pc); m[i]= (dp<dist(i,cen[0]) && dp<dist(i,cen[1]) && dp<dist(i,cen[2])) ? 1:0; }
-    // connected region: the one under the centre, else the largest
-    const q=new Int32Array(n);
-    const flood=(src,seed,out)=>{ let h0=0,t0=0,size=0; q[t0++]=seed; out[seed]=1;
-      while(h0<t0){ const p=q[h0++]; size++; const px=p%w, py=(p/w)|0;
-        if(px>0&&src[p-1]&&!out[p-1]){out[p-1]=1;q[t0++]=p-1;}
-        if(px<w-1&&src[p+1]&&!out[p+1]){out[p+1]=1;q[t0++]=p+1;}
-        if(py>0&&src[p-w]&&!out[p-w]){out[p-w]=1;q[t0++]=p-w;}
-        if(py<h-1&&src[p+w]&&!out[p+w]){out[p+w]=1;q[t0++]=p+w;} }
-      return size; };
-    const largest=(src,seed)=>{ if(seed>=0&&src[seed]){ const o=new Uint8Array(n); flood(src,seed,o); return o; }
-      const seen=new Uint8Array(n); let best=null,bs=0;
-      for(let i=0;i<n;i++){ if(!src[i]||seen[i]) continue; const o=new Uint8Array(n), sz=flood(src,i,o); for(let j=0;j<n;j++) if(o[j]) seen[j]=1; if(sz>bs){bs=sz;best=o;} }
-      return best||new Uint8Array(n); };
-    let comp=largest(m,(h>>1)*w+(w>>1));
-    // fill holes
-    const inv=new Uint8Array(n); for(let i=0;i<n;i++) inv[i]=comp[i]?0:1;
-    const outside=new Uint8Array(n);
-    for(let xx=0;xx<w;xx++){ if(inv[xx]&&!outside[xx]) flood(inv,xx,outside); const b=(h-1)*w+xx; if(inv[b]&&!outside[b]) flood(inv,b,outside); }
-    for(let y=0;y<h;y++){ const a=y*w; if(inv[a]&&!outside[a]) flood(inv,a,outside); const b=a+w-1; if(inv[b]&&!outside[b]) flood(inv,b,outside); }
-    for(let i=0;i<n;i++) comp[i]=outside[i]?0:1;
-    // opening (3x erode, 3x dilate) removes thin bridges
-    const morph=(a,er)=>{ const o=new Uint8Array(n);
-      for(let y=0;y<h;y++) for(let xx=0;xx<w;xx++){ const p=y*w+xx;
-        const l=xx>0?a[p-1]:(er?0:0), r=xx<w-1?a[p+1]:0, u=y>0?a[p-w]:0, dn=y<h-1?a[p+w]:0;
-        o[p]= er ? (a[p]&&l&&r&&u&&dn?1:0) : (a[p]||l||r||u||dn?1:0); }
-      return o; };
-    for(let k=0;k<3;k++) comp=morph(comp,true);
-    for(let k=0;k<3;k++) comp=morph(comp,false);
-    comp=largest(comp,-1);
-    let area=0; for(let i=0;i<n;i++) area+=comp[i];
-    if(area<n*.12||area>n*.95) return FULL;
-    // outline pixels -> Hough -> two horizontal-ish and two vertical-ish sides
-    const NT=180, D=Math.ceil(Math.hypot(w,h)), NR=2*D+1, acc0=new Float32Array(NT*NR);
-    const cs=new Float32Array(NT), sn=new Float32Array(NT);
-    for(let t=0;t<NT;t++){ cs[t]=Math.cos(t*Math.PI/180); sn[t]=Math.sin(t*Math.PI/180); }
-    for(let y=0;y<h;y++) for(let xx=0;xx<w;xx++){ const p=y*w+xx; if(!comp[p]) continue;
-      if(xx>0&&xx<w-1&&y>0&&y<h-1&&comp[p-1]&&comp[p+1]&&comp[p-w]&&comp[p+w]) continue;
-      for(let t=0;t<NT;t++) acc0[t*NR+Math.round(xx*cs[t]+y*sn[t])+D]+=1; }
-    const acc=new Float32Array(NT*NR);
-    for(let t=0;t<NT;t++) for(let r=1;r<NR-1;r++){ let v=0;
-      for(let dt=-1;dt<=1;dt++){ let tt=t+dt, rr=r; if(tt<0){tt+=NT; rr=NR-1-r;} else if(tt>=NT){tt-=NT; rr=NR-1-r;}
-        v+=acc0[tt*NR+rr-1]+acc0[tt*NR+rr]+acc0[tt*NR+rr+1]; }
-      acc[t*NR+r]=v; }
-    const peaks=[], minV=Math.min(w,h)*.12;
-    for(let k=0;k<12;k++){ let bi2=-1,bv=minV; for(let i=0;i<acc.length;i++) if(acc[i]>bv){bv=acc[i];bi2=i;}
-      if(bi2<0) break; const t=(bi2/NR)|0, r=bi2%NR-D; peaks.push({t,r,v:bv});
-      for(let dt=-12;dt<=12;dt++){ const raw=t+dt, tt=((raw%NT)+NT)%NT, r0=(raw<0||raw>=NT)?-r:r;
-        for(let dr=-14;dr<=14;dr++){ const ri=r0+dr+D; if(ri>=0&&ri<NR) acc[tt*NR+ri]=0; } } }
-    const ypos=p=>(p.r-cs[p.t]*w/2)/sn[p.t], xpos=p=>(p.r-sn[p.t]*h/2)/cs[p.t];
-    const Hs=peaks.filter(p=>Math.abs(p.t-90)<40), Vs=peaks.filter(p=>p.t<40||p.t>140);
-    const pair=(L,pos,minD)=>{ let best=null; for(let i=0;i<L.length;i++) for(let j=i+1;j<L.length;j++){
-        if(Math.abs(pos(L[i])-pos(L[j]))<minD) continue; const sc=L[i].v+L[j].v; if(!best||sc>best.sc) best={sc,a:L[i],b:L[j]}; }
-      return best; };
-    const ph=pair(Hs,ypos,h*.3), pv=pair(Vs,xpos,w*.3); if(!ph||!pv) return FULL;
-    const [T,Bm]=ypos(ph.a)<ypos(ph.b)?[ph.a,ph.b]:[ph.b,ph.a], [Lf,Rt]=xpos(pv.a)<xpos(pv.b)?[pv.a,pv.b]:[pv.b,pv.a];
-    const cross=(A,Bq)=>{ const a1=cs[A.t],b1=sn[A.t],a2=cs[Bq.t],b2=sn[Bq.t], det=a1*b2-a2*b1; if(Math.abs(det)<1e-6) return null;
-      return [(A.r*b2-Bq.r*b1)/det*2,(a1*Bq.r-a2*A.r)/det*2]; };          // x2: coordinates in the 800px image
-    const P=[cross(T,Lf),cross(T,Rt),cross(Bm,Rt),cross(Bm,Lf)]; if(P.some(p=>!p)) return FULL;
-    if(fast) return {pts:P.flatMap(p=>[Math.min(1,Math.max(0,p[0]/W2)), Math.min(1,Math.max(0,p[1]/H2))]), ok:true, borders:0};
-    // refine on the 800px grey image: slide each side inwards past the stack edges to the blank margin
-    const N2=W2*H2; let gr=new Float32Array(N2); for(let i=0;i<N2;i++) gr[i]=d[i*4]*.299+d[i*4+1]*.587+d[i*4+2]*.114;
-    gr=box(gr,W2,H2,1);
-    const size=Math.min(W2,H2), maxShift=Math.floor(.08*size), GAP=Math.max(6,Math.floor(.012*size)), START=-6;
-    const cx=(P[0][0]+P[1][0]+P[2][0]+P[3][0])/4, cy=(P[0][1]+P[1][1]+P[2][1]+P[3][1])/4;
-    const lines=[];
-    for(let si=0;si<4;si++){ const A=P[si], Bq=P[(si+1)%4]; let dx=Bq[0]-A[0], dy=Bq[1]-A[1]; const L=Math.hypot(dx,dy)||1;
-      let nx=-dy/L, ny=dx/L; if((cx-A[0])*nx+(cy-A[1])*ny<0){ nx=-nx; ny=-ny; }
-      const two=[];
-      for(const [t0,t1] of [[.08,.38],[.62,.92]]){ const sup=[];
-        for(let sh=START;sh<maxShift;sh++){ let hit=0; const NS=60;
-          for(let k=0;k<NS;k++){ const t=t0+(t1-t0)*k/(NS-1);
-            const X=Math.min(W2-2,Math.max(1,Math.round(A[0]+t*dx+sh*nx))), Y=Math.min(H2-2,Math.max(1,Math.round(A[1]+t*dy+sh*ny))), p=Y*W2+X;
-            const dn=(gr[p+1]-gr[p-1])/2*nx+(gr[p+W2]-gr[p-W2])/2*ny; if(Math.abs(dn)>1.2) hit++; }
-          sup.push(hit/NS); }
-        let run=0, found=-1, mx=0;
-        for(let i=0;i<sup.length;i++){ run=sup[i]<.12?run+1:0; if(run>=GAP){ found=i-GAP+1; break; } }
-        for(let i=0;i<found;i++) if(sup[i]>mx) mx=sup[i];
-        const shift=(found>=0&&mx>.3)?Math.max(0,found+START):0, tm=(t0+t1)/2;
-        two.push([A[0]+tm*dx+shift*nx, A[1]+tm*dy+shift*ny]); }
-      lines.push({p:two[0], d:[two[1][0]-two[0][0], two[1][1]-two[0][1]]}); }
-    const meet=(a,b)=>{ const det=a.d[0]*(-b.d[1])-(-b.d[0])*a.d[1]; if(Math.abs(det)<1e-6) return null;
-      const ex=b.p[0]-a.p[0], ey=b.p[1]-a.p[1], t=(ex*(-b.d[1])-(-b.d[0])*ey)/det; return [a.p[0]+t*a.d[0], a.p[1]+t*a.d[1]]; };
-    let Q=[0,1,2,3].map(i=>meet(lines[(i+3)%4],lines[i]));
-    const aP=Math.abs(shoelace(P));
-    if(Q.some(p=>!p) || Math.abs(shoelace(Q))<aP*.7 || Math.abs(shoelace(Q))>aP*1.02) Q=P;
-    const pts=Q.flatMap(p=>[Math.min(1,Math.max(0,p[0]/W2)), Math.min(1,Math.max(0,p[1]/H2))]);
-    const nrm=[0,1,2,3].map(i=>[pts[i*2],pts[i*2+1]]);
-    if(Math.abs(shoelace(nrm))<.12) return FULL;
-    return {pts, ok:true, borders:0};
-  }catch(e){ return FULL; }
-}
-
-/* ---------- perspective warp ---------- */
-function warp(im, cn){
-  const W0 = im.naturalWidth, H0 = im.naturalHeight;
-  const P = [0,1,2,3].map(i=>[cn[i*2]*W0, cn[i*2+1]*H0]);
-  const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
-  let ow = Math.max(dist(P[0],P[1]), dist(P[3],P[2])), oh = Math.max(dist(P[0],P[3]), dist(P[1],P[2]));
-  const s = Math.min(1, MAX_OUT/Math.max(ow,oh)); ow=Math.max(1,Math.round(ow*s)); oh=Math.max(1,Math.round(oh*s));
-  const sc = canvas(W0,H0), sx = sc.getContext("2d",{willReadFrequently:true}); sx.drawImage(im,0,0);
-  const src = sx.getImageData(0,0,W0,H0).data;
-  const [x0,y0]=P[0],[x1,y1]=P[1],[x2,y2]=P[2],[x3,y3]=P[3];
-  const dx1=x1-x2, dx2=x3-x2, dx3=x0-x1+x2-x3, dy1=y1-y2, dy2=y3-y2, dy3=y0-y1+y2-y3;
-  let a,b,c,d,e,f,g,h;
-  const den = dx1*dy2-dx2*dy1;
-  if(Math.abs(dx3)<1e-9 && Math.abs(dy3)<1e-9 || Math.abs(den)<1e-9){ g=0;h=0; a=x1-x0;b=x3-x0;c=x0;d=y1-y0;e=y3-y0;f=y0; }
-  else { g=(dx3*dy2-dx2*dy3)/den; h=(dx1*dy3-dx3*dy1)/den; a=x1-x0+g*x1; b=x3-x0+h*x3; c=x0; d=y1-y0+g*y1; e=y3-y0+h*y3; f=y0; }
-  const oc = canvas(ow,oh), ox = oc.getContext("2d"), out = ox.createImageData(ow,oh), od = out.data;
-  for(let j=0;j<oh;j++){ const v=(j+.5)/oh;
-    for(let i=0;i<ow;i++){ const u=(i+.5)/ow, z=g*u+h*v+1;
-      let X=(a*u+b*v+c)/z-.5, Y=(d*u+e*v+f)/z-.5;
-      if(X<0)X=0; if(Y<0)Y=0; if(X>W0-1.001)X=W0-1.001; if(Y>H0-1.001)Y=H0-1.001;
-      const xi=X|0, yi=Y|0, fx=X-xi, fy=Y-yi, p=(yi*W0+xi)*4, q=p+W0*4, o=(j*ow+i)*4;
-      for(let k=0;k<3;k++){
-        const top=src[p+k]+(src[p+4+k]-src[p+k])*fx, bot=src[q+k]+(src[q+4+k]-src[q+k])*fx;
-        od[o+k]=top+(bot-top)*fy; }
-      od[o+3]=255; } }
-  ox.putImageData(out,0,0);
-  return oc;
+// the whole photo, scaled down to the page size: what the camera shows is what goes into the PDF
+async function fit(blob){
+  const im = await loadImg(blob);
+  const s = Math.min(1, MAX_OUT/Math.max(im.naturalWidth, im.naturalHeight));
+  const c = canvas(Math.max(1,Math.round(im.naturalWidth*s)), Math.max(1,Math.round(im.naturalHeight*s)));
+  const x = c.getContext("2d",{willReadFrequently:true}); x.imageSmoothingQuality="high"; x.drawImage(im,0,0,c.width,c.height);
+  return c;
 }
 
 /* ---------- enhancement ---------- */
-function enhance(c, mode){
-  if(mode==="none") return c;
+function enhance(c){
   const w=c.width, h=c.height, n=w*h, x=c.getContext("2d",{willReadFrequently:true});
   const img=x.getImageData(0,0,w,h), d=img.data;
-  // 1) white balance: the paper colour is the typical colour of the brighter half of the page.
+  // 1) white balance: the paper colour is the typical colour of the brightest third of the photo.
   //    One gain per channel for the whole page, so warm room light doesn't leave the paper yellow.
   const hist=[new Uint32Array(256),new Uint32Array(256),new Uint32Array(256)], lh=new Uint32Array(256); let cnt=0;
   for(let p=0;p<n*4;p+=16){ lh[(d[p]*.299+d[p+1]*.587+d[p+2]*.114)|0]++; cnt++; }
   if(cnt>n/4*.05){
-    let acc=0, lcut=0; for(let v=255;v>=0;v--){ acc+=lh[v]; if(acc>=cnt*.5){ lcut=v; break; } }   // brighter half = paper
+    let acc=0, lcut=0; for(let v=255;v>=0;v--){ acc+=lh[v]; if(acc>=cnt*.33){ lcut=v; break; } }   // brightest third = paper
     let m=0; for(let p=0;p<n*4;p+=16){ const r=d[p], g=d[p+1], b=d[p+2];
       if(r*.299+g*.587+b*.114>=lcut){ hist[0][r]++; hist[1][g]++; hist[2][b]++; m++; } }
     const med=hist.map(hh=>{ let a2=0; for(let v=0;v<256;v++){ a2+=hh[v]; if(a2>=m/2) return Math.max(v,1); } return 255; });
@@ -335,32 +167,23 @@ function enhance(c, mode){
       for(let dj=-2;dj<=2;dj++) for(let di=-2;di<=2;di++){ const jj=j+dj, ii=i+di; if(jj<0||ii<0||jj>=sh||ii>=sw) continue; const v=arr[jj*sw+ii]; acc+=v; c2++; if(v>mx) mx=v; }
       r[j*sw+i]= useMax ? mx : acc/c2; } return r; };
   let bg=filt(sm,true); bg=filt(bg,false); bg=filt(bg,false);
-  for(let i=0;i<bg.length;i++) if(bg[i]<60) bg[i]=60;
-  const bw = mode==="bw", gray = mode==="gray"||bw;
+  // the desk around the page is not paper: don't lift anything that is much darker than the paper itself
+  const srt=Float32Array.from(bg).sort(), floor=Math.max(60,.6*srt[Math.floor(srt.length*.9)]);
+  for(let i=0;i<bg.length;i++) if(bg[i]<floor) bg[i]=floor;
   for(let y=0;y<h;y++){ const fy=Math.min(sh-1.001,Math.max(0,(y+.5)/k-.5)), jy=fy|0, ty=fy-jy;
     for(let xx=0;xx<w;xx++){ const fx=Math.min(sw-1.001,Math.max(0,(xx+.5)/k-.5)), ix=fx|0, tx=fx-ix;
       const i00=jy*sw+ix, i10=i00+sw, top=bg[i00]+(bg[i00+1]-bg[i00])*tx, bot=bg[i10]+(bg[i10+1]-bg[i10])*tx;
       const p=(y*w+xx)*4, sc=255/((top+(bot-top)*ty)*.93);   // .93 pushes paper grain to clean white
-      let L=0;
-      for(let q=0;q<3;q++){ let v=d[p+q]*sc; v=255-(255-v)*1.25; v= v<0?0:v>255?255:v; if(gray) L+=v*(q===0?.299:q===1?.587:.114); else d[p+q]=v; }
-      if(gray){ if(bw) L=L<170?0:255; d[p]=d[p+1]=d[p+2]=L; }
+      for(let q=0;q<3;q++){ let v=d[p+q]*sc; v=255-(255-v)*1.25; d[p+q]= v<0?0:v>255?255:v; }
     } }
   x.putImageData(img,0,0);
   return c;
 }
-function rotate(c, r){
-  r=((r%4)+4)%4; if(!r) return c;
-  const o = r%2 ? canvas(c.height,c.width) : canvas(c.width,c.height), x=o.getContext("2d");
-  x.translate(o.width/2,o.height/2); x.rotate(r*Math.PI/2); x.drawImage(c,-c.width/2,-c.height/2);
-  return o;
-}
-async function render(p){
-  const im = await loadImg(p.orig);
-  let c = warp(im, p.corners); c = enhance(c, p.filter); c = rotate(c, p.rot);
+async function render(p, blob){
+  const c = enhance(await fit(blob));
   p.out = await toBlob(c,.86); p.ow=c.width; p.oh=c.height;
   if(p.url) URL.revokeObjectURL(p.url); p.url = URL.createObjectURL(p.out);
 }
-
 
 /* ---------- pages ---------- */
 let hintT;
@@ -374,14 +197,11 @@ function refresh(){
 }
 let queue=Promise.resolve();
 function addPhoto(blob){
-  const p={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7), order:(pages.length?Math.max(...pages.map(q=>q.order)):0)+1, filter:"doc", rot:0, busy:true};
+  const p={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7), order:(pages.length?Math.max(...pages.map(q=>q.order)):0)+1, busy:true};
   pages.push(p); pendingShare=null; refresh();
   queue=queue.then(async()=>{
     try{
-      p.orig=await normalizeSource(blob);
-      const im=await loadImg(p.orig);
-      p.corners=detectImage(im);
-      await render(p); p.busy=false; await dbPut(p);
+      await render(p, blob); p.busy=false; await dbPut(p);
     }catch(e){ pages=pages.filter(q=>q!==p); hint("That photo couldn’t be read. Take it again.",4000); }
     refresh();
   });
@@ -395,45 +215,23 @@ $("cancel").onclick=async()=>{ if(!pages.length) return;
 $("last").onclick=async()=>{ const p=pages[pages.length-1]; if(!p||p.busy) return;
   if(confirm("Remove the last page?")){ pages.pop(); if(p.url) URL.revokeObjectURL(p.url); await dbDel(p.id); pendingShare=null; refresh(); } };
 
-/* ---------- camera with live page outline ---------- */
-const cam={stream:null, timer:0, smooth:null, lost:0};
-function overlayBox(){
-  const v=$("video"), o=$("overlay"), r=v.getBoundingClientRect(), pr=$("view").getBoundingClientRect();
-  o.style.left=(r.left-pr.left)+"px"; o.style.top=(r.top-pr.top)+"px"; o.style.width=r.width+"px"; o.style.height=r.height+"px";
-  const dpr=window.devicePixelRatio||1; if(o.width!==Math.round(r.width*dpr)||o.height!==Math.round(r.height*dpr)){ o.width=Math.round(r.width*dpr); o.height=Math.round(r.height*dpr); }
-  return {o,W:o.width,H:o.height,dpr};
-}
-function drawQuad(pts){
-  const {o,W,H,dpr}=overlayBox(), x=o.getContext("2d"); x.clearRect(0,0,W,H); if(!pts) return;
-  x.beginPath(); for(let i=0;i<4;i++){ const px=pts[i*2]*W, py=pts[i*2+1]*H; i?x.lineTo(px,py):x.moveTo(px,py); } x.closePath();
-  x.fillStyle="rgba(255,214,10,.16)"; x.fill(); x.lineWidth=2.5*dpr; x.lineJoin="round"; x.strokeStyle="#FFD60A"; x.stroke();
-}
-function loop(){
-  if(!cam.stream) return;
-  const v=$("video");
-  if(v.videoWidth && !document.hidden){
-    const r=detectCorners(v, v.videoWidth, v.videoHeight, true);
-    if(r.ok){ cam.lost=0; cam.smooth = cam.smooth ? cam.smooth.map((q,i)=>q*.55+r.pts[i]*.45) : r.pts.slice(); drawQuad(cam.smooth); }
-    else if(++cam.lost>2){ cam.smooth=null; drawQuad(null); }
-  }
-  cam.timer=setTimeout(loop,160);
-}
+/* ---------- camera ---------- */
+const cam={stream:null};
 async function openCamera(){
   if(cam.stream) return;
   if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)){ camFail(); return; }
   try{
     cam.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:2560},height:{ideal:1920}}});
     const v=$("video"); v.srcObject=cam.stream; await v.play();
-    $("start").hidden=true; $("shutter").disabled=false; cam.smooth=null; cam.lost=0;
-    hint(pages.length?"Ready for next scan.":"Position the document in view.",3500);
-    loop();
+    $("start").hidden=true; $("shutter").disabled=false;
+    hint(pages.length?"Ready for next scan.":"Fill the frame with the page.",3500);
   }catch(e){ camFail(); }
 }
 function camFail(){
   $("start").hidden=false; $("startBtn").textContent="Try the camera again"; $("fileLbl").hidden=false;
   $("startText").textContent="The camera couldn’t be opened. Allow camera access for this site in Safari, or take the photos with the iPhone camera instead.";
 }
-function stopCamera(){ clearTimeout(cam.timer); if(cam.stream){ cam.stream.getTracks().forEach(t=>t.stop()); cam.stream=null; } $("video").srcObject=null; drawQuad(null); $("shutter").disabled=true; }
+function stopCamera(){ if(cam.stream){ cam.stream.getTracks().forEach(t=>t.stop()); cam.stream=null; } $("video").srcObject=null; $("shutter").disabled=true; }
 $("startBtn").onclick=openCamera;
 $("fileIn").onchange=e=>{ const fs=[...e.target.files]; fs.forEach(addPhoto); e.target.value=""; if(fs.length) hint("Photos added. Tap Save when you’re done.",4000); };
 $("shutter").onclick=async()=>{
@@ -444,7 +242,6 @@ $("shutter").onclick=async()=>{
   addPhoto(blob); hint("Ready for next scan.",2500);
 };
 document.addEventListener("visibilitychange",()=>{ if(document.hidden){ if(cam.stream){ stopCamera(); cam.resume=true; } } else if(cam.resume){ cam.resume=false; openCamera(); } });
-window.addEventListener("resize",()=>{ if(cam.stream) drawQuad(cam.smooth); });
 
 /* ---------- save as PDF ---------- */
 let pendingShare=null;
@@ -477,16 +274,10 @@ $("save").onclick=async()=>{
     }
     doc.setProperties({title:name.replace(/\.pdf$/i,""),creator:"TaraScan "+VERSION});
     const out=doc.output("blob");
-    if(dlNS===undefined) dlNS = window.claude && window.claude.use ? await window.claude.use("downloads") : null;
-    if(dlNS){
-      try{ await dlNS.save({filename:name,data:out}); await finished(name,out.size); }
-      catch(err){ hint(err&&err.code==="declined"?"Not saved. Your pages are still here.":"The PDF couldn’t be saved.",4000); }
-    } else {
-      const file=new File([out],name,{type:"application/pdf"});
-      if(navigator.canShare && navigator.canShare({files:[file]})){ sv.disabled=false; await shareFile(file,name); refresh(); return; }
-      const a=document.createElement("a"); a.href=URL.createObjectURL(out); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},4000);
-      await finished(name,out.size);
-    }
+    const file=new File([out],name,{type:"application/pdf"});
+    if(navigator.canShare && navigator.canShare({files:[file]})){ sv.disabled=false; await shareFile(file,name); refresh(); return; }
+    const a=document.createElement("a"); a.href=URL.createObjectURL(out); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},4000);
+    await finished(name,out.size);
   }catch(e){ hint("The PDF couldn’t be created.",4000); }
   refresh();
 };
